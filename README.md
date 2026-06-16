@@ -54,6 +54,23 @@ go get github.com/go-sqlex/sqlex
 
 Requires Go 1.24 or later.
 
+### Version Specification
+
+You can also pin to a specific version using semantic versioning:
+
+```bash
+# Latest version
+go get github.com/go-sqlex/sqlex@latest
+
+# Specific version
+go get github.com/go-sqlex/sqlex@v1.5.0
+
+# Or in go.mod
+require github.com/go-sqlex/sqlex v1.5.0
+```
+
+For the list of available versions and releases, see [GitHub Releases](https://github.com/go-sqlex/sqlex/releases).
+
 ## Quick Start
 
 ```go
