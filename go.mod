@@ -2,8 +2,6 @@ module github.com/go-sqlex/sqlex
 
 go 1.21.0
 
-toolchain go1.24.13
-
 require (
 	github.com/go-sql-driver/mysql v1.9.3 // test
 	github.com/joho/godotenv v1.5.1 // test
