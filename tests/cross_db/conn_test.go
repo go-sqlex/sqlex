@@ -1,6 +1,4 @@
-// conn_test.go — 任务 6: Conn 类型的跨库集成测试
-//
-// 需求覆盖：5.1–5.7, 11.10
+// conn_test.go — cross-database integration tests for Conn type
 package cross_db_test
 
 import (

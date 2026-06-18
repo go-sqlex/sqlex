@@ -1,6 +1,4 @@
-// query_test.go — Task 5: Cross-DB integration tests for core query APIs
-//
-// Requirement coverage: 4.1–4.10, 8.5
+// query_test.go — cross-database integration tests for core query APIs
 package cross_db_test
 
 import (

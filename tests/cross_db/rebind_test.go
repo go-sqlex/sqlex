@@ -1,6 +1,4 @@
-// rebind_test.go — Task 3: Cross-DB integration tests for Rebind SQL rewriting
-//
-// Requirement coverage: 2.1–2.9, 12.2–12.5, 12.14
+// rebind_test.go — cross-database integration tests for Rebind SQL rewriting
 package cross_db_test
 
 import (

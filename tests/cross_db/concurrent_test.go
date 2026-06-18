@@ -1,6 +1,6 @@
-// concurrent_test.go — P3-3: 并发压力测试
+// concurrent_test.go — concurrency stress tests
 //
-// 验证 DB 在高并发场景下的连接池稳定性和数据正确性。
+// Verifies connection pool stability and data correctness under high concurrency.
 package cross_db_test
 
 import (

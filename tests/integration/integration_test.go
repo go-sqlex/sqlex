@@ -1,13 +1,13 @@
-// integration_test.go — sqlex 通用集成测试（黑盒）
+// integration_test.go — sqlex general integration tests (black-box)
 //
-// 覆盖范围：
-//  1. 常规 SQL CRUD（Select / Get / Exec）
-//  2. Bug Fix 验证（Rebind 转义、LoadFile 智能分割、Unicode 命名查询、:: 处理、
-//     NamedStmt.Exec 返回值、ConnectContext 泄漏修复）
-//  3. 新增功能（NamedGet / NamedSelect（内置 IN 展开） / NamedExecContext /
-//     CloseWithErr / Hook / 自动 IN 展开 / NamedExt + BindExt 统一接口）
+// Coverage:
+//  1. Standard SQL CRUD (Select / Get / Exec)
+//  2. Bug fix verification (Rebind escape, Unicode named queries, :: handling,
+//     NamedStmt.Exec return value, ConnectContext leak fix)
+//  3. New features (NamedGet / NamedSelect with IN expansion / NamedExecContext /
+//     CloseWithErr / Hook / auto IN expansion / NamedExt + BindExt unified interfaces)
 //
-// 运行:
+// Run:
 //
 //	go test -v -count=1 -timeout=120s ./tests/integration/
 package integration_test
@@ -165,8 +165,8 @@ func TestIntegrationBasicCRUD(t *testing.T) {
 		if rowsAffected != 1 {
 			t.Errorf("expected 1 row inserted, got %d", rowsAffected)
 		}
-		// 注意: PostgreSQL 不支持 LastInsertId，仅在非 PG 驱动下测试
-		if db.DriverName() != "postgres" {
+		// 注意: PostgreSQL 和 SQL Server 不支持 LastInsertId
+		if db.DriverName() != "postgres" && db.DriverName() != "sqlserver" {
 			lastID, _ := result.LastInsertId()
 			if lastID <= 0 {
 				t.Errorf("expected positive LastInsertId, got %d", lastID)
@@ -258,8 +258,8 @@ func TestIntegrationNamedStmtExecResult(t *testing.T) {
 		if result == nil {
 			t.Fatal("expected non-nil sql.Result from NamedStmt.Exec")
 		}
-		// 注意: PostgreSQL 不支持 LastInsertId
-		if db.DriverName() != "postgres" {
+		// 注意: PostgreSQL 和 SQL Server 不支持 LastInsertId
+		if db.DriverName() != "postgres" && db.DriverName() != "sqlserver" {
 			lastID, err := result.LastInsertId()
 			if err != nil {
 				t.Fatalf("LastInsertId failed: %v", err)
@@ -412,7 +412,7 @@ func TestIntegrationAutoINExpansion(t *testing.T) {
 
 		// Get 自动 IN（虽然不常见，但应该不报错）
 		var user IntUser
-		err = db.Get(&user, "SELECT * FROM int_users WHERE id IN (?) LIMIT 1", []int{2})
+		err = db.Get(&user, selectTop1(db, "SELECT * FROM int_users WHERE id IN (?) LIMIT 1"), []int{2})
 		if err != nil {
 			t.Fatalf("Get auto-IN failed: %v", err)
 		}

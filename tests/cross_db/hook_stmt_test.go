@@ -1,6 +1,6 @@
-// hook_stmt_test.go — P3-2: NamedStmt/Stmt Hook 测试
+// hook_stmt_test.go — Stmt / NamedStmt Hook tests
 //
-// 验证 Stmt 和 NamedStmt 在执行时正确触发 Hook 系统。
+// Verifies that Stmt and NamedStmt correctly trigger the Hook system on execution.
 package cross_db_test
 
 import (

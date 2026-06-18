@@ -1,6 +1,4 @@
-// tx_test.go — 任务 4: 事务处理的跨库集成测试
-//
-// 需求覆盖：3.1–3.8
+// tx_test.go — cross-database integration tests for transaction handling
 package cross_db_test
 
 import (

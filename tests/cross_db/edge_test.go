@@ -1,6 +1,4 @@
-// edge_test.go — Task 9: Edge case and error scenario tests
-//
-// Requirement coverage: 8.1–8.9, 12.1
+// edge_test.go — edge case and error scenario tests
 package cross_db_test
 
 import (

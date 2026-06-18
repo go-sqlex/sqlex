@@ -1,6 +1,4 @@
-// named_test.go — 任务 2: 命名参数处理的跨库集成测试
-//
-// 需求覆盖：1.1–1.11, 12.6–12.11
+// named_test.go — cross-database integration tests for named parameter handling
 package cross_db_test
 
 import (

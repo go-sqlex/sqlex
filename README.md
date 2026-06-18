@@ -44,7 +44,7 @@
 - 🎯 **NamedExt/BindExt unified interfaces** — DB, Tx, and Conn share the same extended method signatures
 - 🛠️ **Multi-driver support** — PostgreSQL, MySQL, SQLite, Oracle, SQL Server
 - 🛡️ **StrictMode** — off by default (lenient mode); enable with `SetStrict(true)` to catch field mismatches early in development
-- ⚡ **Go 1.24 modernization** — `any` type, modular file structure, enhanced error messages
+- ⚡ **Go 1.21+ modernization** — `any` type, modular file structure, enhanced error messages
 
 ## Installation
 
@@ -52,7 +52,7 @@
 go get github.com/go-sqlex/sqlex
 ```
 
-Requires Go 1.24 or later.
+Requires Go 1.21 or later.
 
 ### Version Specification
 
@@ -401,7 +401,7 @@ func listUsers(ext sqlex.BindExt, minAge int) ([]User, error) {
 
 | Feature | jmoiron/sqlx | sqlex |
 |---------|-------------|-------|
-| Go version | 1.10+ | 1.24+ |
+| Go version | 1.10+ | 1.21+ |
 | Struct scanning | ✅ | ✅ |
 | Named queries | ✅ | ✅ |
 | Bindvar conversion | ✅ | ✅ (enhanced: supports `\?` and `??` escape, skips string literals, identifiers, comments, PG dollar quoting) |

@@ -1,6 +1,4 @@
-// e2e_test.go — Task 11: End-to-end cross-DB verification of sqlex new features
-//
-// Requirement coverage: 11.1–11.10, 12.13–12.14
+// e2e_test.go — end-to-end cross-database verification of sqlex new features
 package cross_db_test
 
 import (

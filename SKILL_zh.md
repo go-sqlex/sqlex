@@ -25,7 +25,7 @@ description: sqlex 是基于 jmoiron/sqlx 的 Go database/sql 现代化增强封
 
 **定位**：Go `database/sql` 增强封装（非 ORM），基于 jmoiron/sqlx 升级。
 **模块路径**：`github.com/go-sqlex/sqlex`
-**Go 版本**：1.24+ | **数据库**：PostgreSQL、MySQL、SQLite、Oracle、SQL Server
+**Go 版本**：1.21+ | **数据库**：PostgreSQL、MySQL、SQLite、Oracle、SQL Server
 
 **关键设计**：
 - 统一 `?` 占位符，框架自动 Rebind 为 `$N`/`@pN`/`:argN`

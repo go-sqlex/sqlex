@@ -1,6 +1,4 @@
-// prepared_test.go — 任务 10: 预编译语句和统一接口的跨库集成测试
-//
-// 需求覆盖：9.1–9.6, 10.1–10.4, 12.12
+// prepared_test.go — cross-database integration tests for prepared statements and unified interfaces
 package cross_db_test
 
 import (

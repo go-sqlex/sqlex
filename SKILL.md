@@ -28,7 +28,7 @@ description: sqlex is a modern enhancement wrapper for Go database/sql based on 
 
 **Positioning**: Go `database/sql` enhancement wrapper (not an ORM), upgraded from jmoiron/sqlx.
 **Module path**: `github.com/go-sqlex/sqlex`
-**Go version**: 1.24+ | **Databases**: PostgreSQL, MySQL, SQLite, Oracle, SQL Server
+**Go version**: 1.21+ | **Databases**: PostgreSQL, MySQL, SQLite, Oracle, SQL Server
 
 **Key Design**:
 - Unified `?` placeholder; framework auto-Rebinds to `$N`/`@pN`/`:argN`

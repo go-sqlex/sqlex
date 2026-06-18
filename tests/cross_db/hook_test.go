@@ -1,6 +1,4 @@
-// hook_test.go — 任务 7: Hook 切面机制的跨库集成测试
-//
-// 需求覆盖：6.1–6.7, 11.8–11.9
+// hook_test.go — cross-database integration tests for Hook aspects
 package cross_db_test
 
 import (

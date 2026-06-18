@@ -1,13 +1,13 @@
-// pg_integration_test.go — PostgreSQL 专用集成测试
+// pg_test.go — PostgreSQL-specific integration tests
 //
-// 覆盖范围：
-//  1. 数据库连通性（Ping、连接关闭）
-//  2. 常规 CRUD、事务、预编译语句、连接池
-//  3. 新增功能：Hook 机制、JsonValue 泛型、Named 查询、Context 控制
-//  4. PostgreSQL 特有功能：JSON/JSONB、数组、:: 类型转换、$N 占位符
-//  5. 边界情况：空值、类型转换异常、连接超时、并发访问
+// Coverage:
+//  1. Database connectivity (Ping, connection close)
+//  2. Standard CRUD, transactions, prepared statements, connection pool
+//  3. New features: Hook system, JsonValue[T], Named queries, Context control
+//  4. PostgreSQL-specific: JSON/JSONB, arrays, :: type casts, $N placeholders
+//  5. Edge cases: nulls, type conversion errors, connection timeout, concurrency
 //
-// 运行（仅 PostgreSQL）:
+// Run (PostgreSQL only):
 //
 //	go test -v -count=1 -timeout=120s ./tests/pg/
 package pg_test
@@ -27,9 +27,9 @@ import (
 	"github.com/go-sqlex/sqlex/types"
 )
 
-// ---------- PostgreSQL 测试辅助 ----------
+// ---------- PostgreSQL test helpers ----------
 
-// IntUser 用户表结构
+// IntUser struct
 type IntUser struct {
 	ID        int       `db:"id"`
 	Name      string    `db:"name"`
@@ -38,7 +38,7 @@ type IntUser struct {
 	CreatedAt time.Time `db:"created_at"`
 }
 
-// IntOrder 订单表结构
+// IntOrder struct
 type IntOrder struct {
 	ID     int     `db:"id"`
 	UserID int     `db:"user_id"`
@@ -46,7 +46,7 @@ type IntOrder struct {
 	Status string  `db:"status"`
 }
 
-// testHook 是测试用的 Hook 实现
+// testHook is a test Hook implementation
 type testHook struct {
 	mu          sync.Mutex
 	beforeCount int
@@ -68,7 +68,7 @@ func (h *testHook) AfterQuery(ctx context.Context, event *sqlex.QueryEvent) {
 	h.afterCount++
 }
 
-// orderHook 用于验证 Hook 洋葱模型的调用顺序
+// orderHook validates Hook onion model call order
 type orderHook struct {
 	name  string
 	order *[]string
@@ -89,7 +89,7 @@ func (h *orderHook) AfterQuery(ctx context.Context, event *sqlex.QueryEvent) {
 }
 
 // pgSchema
-// pgSchema 是 PostgreSQL 专用的测试 schema（使用 SERIAL 而非 AUTOINCREMENT）
+// pgSchema is the PostgreSQL-specific test schema (uses SERIAL instead of AUTOINCREMENT)
 var pgSchema = Schema{
 	Create: `
 CREATE TABLE pg_users (
@@ -113,7 +113,7 @@ DROP TABLE IF EXISTS pg_orders;
 `,
 }
 
-// seedPGData 插入 PostgreSQL 测试种子数据
+// seedPGData inserts test seed data into PostgreSQL
 func seedPGData(db *sqlex.DB, t *testing.T) {
 	t.Helper()
 	tx := db.MustBegin()
@@ -127,10 +127,10 @@ func seedPGData(db *sqlex.DB, t *testing.T) {
 }
 
 // ========================================================
-// 1. 数据库连通性测试
+// 1. Database connectivity tests
 // ========================================================
 
-// TestPGConnectivity 验证 PostgreSQL 连接和基本操作
+// TestPGConnectivity verifies PostgreSQL connection and basic operations
 func TestPGConnectivity(t *testing.T) {
 	pgOnly(t)
 
@@ -158,11 +158,11 @@ func TestPGConnectivity(t *testing.T) {
 
 	t.Run("Stats", func(t *testing.T) {
 		stats := pgdb.Stats()
-		// 至少有一个打开的连接
+		// should have at least one open connection
 		if stats.OpenConnections <= 0 {
 			t.Logf("Warning: OpenConnections = %d (may be 0 in idle pool)", stats.OpenConnections)
 		}
-		t.Logf("PostgreSQL连接池状态: Open=%d, InUse=%d, Idle=%d",
+		t.Logf("PostgreSQL pool status: Open=%d, InUse=%d, Idle=%d",
 			stats.OpenConnections, stats.InUse, stats.Idle)
 	})
 
@@ -170,17 +170,17 @@ func TestPGConnectivity(t *testing.T) {
 		var version string
 		err := pgdb.Get(&version, "SELECT version()")
 		if err != nil {
-			t.Fatalf("获取 PostgreSQL 版本失败: %v", err)
+			t.Fatalf("get PostgreSQL version failed: %v", err)
 		}
-		t.Logf("PostgreSQL版本: %s", version)
+		t.Logf("PostgreSQL version: %s", version)
 	})
 }
 
 // ========================================================
-// 2. 常规功能测试
+// 2. Standard feature tests
 // ========================================================
 
-// TestPGBasicCRUD 基础 CRUD 操作
+// TestPGBasicCRUD basic CRUD operations
 func TestPGBasicCRUD(t *testing.T) {
 	pgOnly(t)
 
@@ -257,7 +257,7 @@ func TestPGBasicCRUD(t *testing.T) {
 	})
 
 	t.Run("Insert_RETURNING", func(t *testing.T) {
-		// PostgreSQL 特有：INSERT ... RETURNING id
+		// PostgreSQL-specific: INSERT ... RETURNING id
 		var newID int
 		err := pgdb.Get(&newID, "INSERT INTO pg_users (name, email, age) VALUES (?, ?, ?) RETURNING id",
 			"Dave", "dave@example.com", 28)
@@ -270,7 +270,7 @@ func TestPGBasicCRUD(t *testing.T) {
 	})
 }
 
-// TestPGTransaction 事务处理测试（回滚和提交）
+// TestPGTransaction transaction handling (rollback and commit)
 func TestPGTransaction(t *testing.T) {
 	pgOnly(t)
 
@@ -364,7 +364,7 @@ func TestPGTransaction(t *testing.T) {
 	})
 }
 
-// TestPGPreparedStatement 预编译语句测试
+// TestPGPreparedStatement prepared statement tests
 func TestPGPreparedStatement(t *testing.T) {
 	pgOnly(t)
 
@@ -374,7 +374,7 @@ func TestPGPreparedStatement(t *testing.T) {
 	seedPGData(pgdb, t)
 
 	t.Run("Preparex", func(t *testing.T) {
-		// 统一使用 ? 占位符，Preparex 自动 Rebind 为 $1
+		// Use ? placeholder uniformly; Preparex auto-Rebinds to $1
 		stmt, err := pgdb.Preparex("SELECT * FROM pg_users WHERE name = ?")
 		if err != nil {
 			t.Fatalf("Preparex failed: %v", err)
@@ -412,7 +412,7 @@ func TestPGPreparedStatement(t *testing.T) {
 	})
 
 	t.Run("PreparedSelect", func(t *testing.T) {
-		// 统一使用 ? 占位符，Preparex 自动 Rebind
+		// Use ? placeholder uniformly; Preparex auto-Rebinds
 		stmt, err := pgdb.Preparex("SELECT * FROM pg_users WHERE age > ? ORDER BY age")
 		if err != nil {
 			t.Fatalf("Preparex failed: %v", err)
@@ -431,10 +431,10 @@ func TestPGPreparedStatement(t *testing.T) {
 }
 
 // ========================================================
-// 3. 新需求功能测试
+// 3. New feature tests
 // ========================================================
 
-// TestPGHook Hook 机制在 PostgreSQL 环境下的完整性验证
+// TestPGHook verifies Hook mechanism integrity in PostgreSQL
 func TestPGHook(t *testing.T) {
 	pgOnly(t)
 
@@ -443,7 +443,7 @@ func TestPGHook(t *testing.T) {
 	multiExec(pgdb, create)
 
 	t.Run("BasicHook", func(t *testing.T) {
-		// 创建独立的 DB 包装避免污染全局 pgdb 的 hooks
+		// Create independent DB wrapper to avoid polluting global pgdb hooks
 		db := sqlex.NewDb(pgdb.DB, pgdb.DriverName())
 		hook := &testHook{}
 		db.AddHook(hook)
@@ -470,7 +470,7 @@ func TestPGHook(t *testing.T) {
 			t.Error("expected AfterQuery to be called")
 		}
 
-		// 验证查询被记录
+		// Verify the query was recorded
 		found := false
 		for _, q := range hook.queries {
 			if q == "SELECT * FROM pg_users ORDER BY id" {
@@ -531,7 +531,7 @@ func TestPGHook(t *testing.T) {
 		hook.mu.Lock()
 		defer hook.mu.Unlock()
 
-		// Hook 记录的 query 是 Rebind 后的格式（$N），因为 Rebind 在 Hook 之前执行
+		// Hook records query in Rebind format ($N), because Rebind runs before Hook
 		found := false
 		for _, q := range hook.queries {
 			if q == "SELECT * FROM pg_users WHERE name = $1" {
@@ -559,7 +559,7 @@ func TestPGHook(t *testing.T) {
 		db.AddHook(errorHook)
 
 		ctx := context.Background()
-		// 执行一个会失败的查询
+		// Execute a query that will fail
 		_, _ = db.ExecContext(ctx, "SELECT * FROM nonexistent_table_xxx")
 
 		if capturedError == nil {
@@ -571,7 +571,7 @@ func TestPGHook(t *testing.T) {
 	})
 }
 
-// funcHook 是一个函数式的 Hook 实现，方便测试
+// funcHook is a function-based Hook implementation for testing
 type funcHook struct {
 	before func(ctx context.Context, event *sqlex.QueryEvent) context.Context
 	after  func(ctx context.Context, event *sqlex.QueryEvent)
@@ -585,7 +585,7 @@ func (h *funcHook) AfterQuery(ctx context.Context, event *sqlex.QueryEvent) {
 	h.after(ctx, event)
 }
 
-// TestPGJsonValue JsonValue 泛型类型在 PostgreSQL JSON 字段中的映射测试
+// TestPGJsonValue tests JsonValue[T] mapping with PostgreSQL JSON columns
 func TestPGJsonValue(t *testing.T) {
 	pgOnly(t)
 
@@ -605,7 +605,7 @@ CREATE TABLE pg_json_test (
 	defer multiExec(pgdb, drop)
 	multiExec(pgdb, create)
 
-	// 定义测试用结构体
+	// Define test structs
 	type Metadata struct {
 		Version string `json:"version"`
 		Author  string `json:"author"`
@@ -701,7 +701,7 @@ CREATE TABLE pg_json_test (
 			t.Errorf("expected %s, got %s", expected, string(data))
 		}
 
-		// 测试无效值序列化
+		// Test invalid value serialization
 		var invalid types.JsonValue[Metadata]
 		data, err = json.Marshal(invalid)
 		if err != nil {
@@ -713,7 +713,7 @@ CREATE TABLE pg_json_test (
 	})
 
 	t.Run("JsonValue_Map", func(t *testing.T) {
-		// 测试 map 类型的 JsonValue
+		// Test JsonValue with map type
 		type MapRow struct {
 			ID       int                             `db:"id"`
 			Name     string                          `db:"name"`
@@ -741,14 +741,14 @@ CREATE TABLE pg_json_test (
 	})
 
 	t.Run("JSONB_Query_Operators", func(t *testing.T) {
-		// 测试 JSONB 查询操作符
+		// Test JSONB query operators
 		_, err := pgdb.Exec(`INSERT INTO pg_json_test (name, settings) VALUES (?, ?::jsonb)`,
 			"jsonbquery", `{"theme":"light","font_size":16}`)
 		if err != nil {
 			t.Fatalf("Insert JSONB failed: %v", err)
 		}
 
-		// 使用 ->> 操作符查询 JSONB 字段
+		// Use ->> operator to query JSONB field
 		var theme string
 		err = pgdb.Get(&theme, "SELECT settings->>'theme' FROM pg_json_test WHERE name = ?", "jsonbquery")
 		if err != nil {
@@ -758,7 +758,7 @@ CREATE TABLE pg_json_test (
 			t.Errorf("expected theme 'light', got '%s'", theme)
 		}
 
-		// 使用 @> 操作符（JSONB 包含查询）
+		// Use @> operator (JSONB containment query)
 		var name string
 		err = pgdb.Get(&name, `SELECT name FROM pg_json_test WHERE settings @> '{"theme":"light"}'::jsonb AND name = ?`, "jsonbquery")
 		if err != nil {
@@ -870,8 +870,8 @@ func TestPGNamedQuery(t *testing.T) {
 		}
 	})
 
-	// 注意：sqlex 不支持 Unicode 命名参数名，但 Unicode 数据值完全正常。
-	// 用 ASCII 参数名 + Unicode 值验证真实场景。
+	// Note: sqlex does not support Unicode param names, but Unicode data values are fine.
+	// Use ASCII param names + Unicode values to verify real scenarios.
 	t.Run("NamedQuery_UnicodeValue", func(t *testing.T) {
 		_, err := pgdb.NamedExec(
 			`INSERT INTO pg_users (name, email, age) VALUES (:name, :email, :age)`,
@@ -933,7 +933,7 @@ func TestPGNamedQuery(t *testing.T) {
 	})
 }
 
-// TestPGContext 上下文传递和超时控制测试
+// TestPGContext tests context propagation and timeout control
 func TestPGContext(t *testing.T) {
 	pgOnly(t)
 
@@ -1007,10 +1007,10 @@ func TestPGContext(t *testing.T) {
 	})
 
 	t.Run("ContextTimeout", func(t *testing.T) {
-		// 使用极短超时测试 Context 取消
+		// Use very short timeout to test Context cancellation
 		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Nanosecond)
 		defer cancel()
-		// 给一点时间让 context 过期
+		// Give some time for the context to expire
 		time.Sleep(1 * time.Millisecond)
 
 		var users []IntUser
@@ -1022,7 +1022,7 @@ func TestPGContext(t *testing.T) {
 
 	t.Run("ContextCancel", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
-		cancel() // 立即取消
+		cancel() // immediately cancel
 
 		var users []IntUser
 		err := pgdb.SelectContext(ctx, &users, "SELECT * FROM pg_users")
@@ -1033,10 +1033,10 @@ func TestPGContext(t *testing.T) {
 }
 
 // ========================================================
-// 4. PostgreSQL 特有功能测试
+// 4. PostgreSQL-specific feature tests
 // ========================================================
 
-// TestPGJSONBTypes JSON/JSONB 数据类型支持
+// TestPGJSONBTypes tests JSON/JSONB data type support
 func TestPGJSONBTypes(t *testing.T) {
 	pgOnly(t)
 
@@ -1070,7 +1070,7 @@ CREATE TABLE pg_jsonb_advanced (
 			t.Fatalf("Insert deep nested JSON failed: %v", err)
 		}
 
-		// 使用 JSON 路径查询
+		// Use JSON path query
 		var val string
 		err = pgdb.Get(&val, "SELECT data->'level1'->'level2'->>'level3' FROM pg_jsonb_advanced LIMIT 1")
 		if err != nil {
@@ -1098,9 +1098,9 @@ CREATE TABLE pg_jsonb_advanced (
 	})
 
 	t.Run("JSONB_Existence", func(t *testing.T) {
-		// 使用 jsonb_exists 函数测试 key 存在性
-		// 注：直接 SQL 中使用 ? 操作符会与占位符冲突，
-		// 推荐使用 Rebind("data ?? 'key'") 或 jsonb_exists 函数
+		// Using jsonb_exists function to test key existence
+		// Note: direct use of ? operator in SQL conflicts with placeholder,
+		// use Rebind("data ?? 'key'") or jsonb_exists function instead
 		var count int
 		err := pgdb.Get(&count, `SELECT COUNT(*) FROM pg_jsonb_advanced WHERE jsonb_exists(data, 'tags')`)
 		if err != nil {
@@ -1110,7 +1110,7 @@ CREATE TABLE pg_jsonb_advanced (
 			t.Error("expected at least 1 result from JSONB key existence query")
 		}
 
-		// 同时验证通过 ?? 转义方式（框架会自动 Rebind，?? 输出为字面量 ?）
+		// Also verify via ?? escape (framework auto-Rebinds, ?? outputs literal ?)
 		count = 0
 		err = pgdb.Get(&count, `SELECT COUNT(*) FROM pg_jsonb_advanced WHERE data ?? 'tags'`)
 		if err != nil {
@@ -1122,7 +1122,7 @@ CREATE TABLE pg_jsonb_advanced (
 	})
 }
 
-// TestPGArrayTypes 数组类型支持
+// TestPGArrayTypes tests array type support
 func TestPGArrayTypes(t *testing.T) {
 	pgOnly(t)
 
@@ -1148,7 +1148,7 @@ CREATE TABLE pg_array_test (
 			t.Fatalf("Insert array literal failed: %v", err)
 		}
 
-		// 读取并验证
+		// Read and verify
 		var intArr, textArr string
 		row := pgdb.QueryRowx("SELECT int_arr::text, text_arr::text FROM pg_array_test WHERE name = ?", "test1")
 		err = row.Scan(&intArr, &textArr)
@@ -1166,7 +1166,7 @@ CREATE TABLE pg_array_test (
 			t.Fatalf("Insert failed: %v", err)
 		}
 
-		// 使用 ANY 操作符
+		// Use ANY operator
 		var name string
 		err = pgdb.Get(&name, "SELECT name FROM pg_array_test WHERE ? = ANY(int_arr)", 20)
 		if err != nil {
@@ -1248,7 +1248,7 @@ func TestPGTypeCasting(t *testing.T) {
 	})
 }
 
-// TestPGSpecificSQLSyntax PostgreSQL 特定 SQL 语法兼容性
+// TestPGSpecificSQLSyntax tests PostgreSQL-specific SQL syntax compatibility
 func TestPGSpecificSQLSyntax(t *testing.T) {
 	pgOnly(t)
 
@@ -1258,7 +1258,7 @@ func TestPGSpecificSQLSyntax(t *testing.T) {
 	seedPGData(pgdb, t)
 
 	t.Run("DollarQuoting", func(t *testing.T) {
-		// PostgreSQL 支持 $$ 美元引号
+		// PostgreSQL supports $$ dollar quoting
 		var result string
 		err := pgdb.Get(&result, `SELECT $$hello world$$`)
 		if err != nil {
@@ -1270,7 +1270,7 @@ func TestPGSpecificSQLSyntax(t *testing.T) {
 	})
 
 	t.Run("CTE_WithQuery", func(t *testing.T) {
-		// Common Table Expression (WITH 子句)
+		// Common Table Expression (WITH clause)
 		var users []IntUser
 		err := pgdb.Select(&users, `
 			WITH young_users AS (
@@ -1307,7 +1307,7 @@ func TestPGSpecificSQLSyntax(t *testing.T) {
 	})
 
 	t.Run("UPSERT_OnConflict", func(t *testing.T) {
-		// 首先添加 UNIQUE 约束
+		// First add UNIQUE constraint
 		pgdb.Exec("CREATE UNIQUE INDEX IF NOT EXISTS pg_users_email_idx ON pg_users (email)")
 
 		// INSERT ... ON CONFLICT DO UPDATE (PostgreSQL UPSERT)
@@ -1344,10 +1344,10 @@ func TestPGSpecificSQLSyntax(t *testing.T) {
 }
 
 // ========================================================
-// 5. 边界情况和错误处理
+// 5. Edge cases and error handling
 // ========================================================
 
-// TestPGNullHandling 空值处理
+// TestPGNullHandling tests null value handling
 func TestPGNullHandling(t *testing.T) {
 	pgOnly(t)
 
@@ -1398,7 +1398,7 @@ CREATE TABLE pg_null_test (
 	})
 
 	t.Run("AllValues", func(t *testing.T) {
-		now := time.Now().Truncate(time.Microsecond) // PostgreSQL 精度到微秒
+		now := time.Now().Truncate(time.Microsecond) // PostgreSQL microsecond precision
 		_, err := pgdb.Exec(`INSERT INTO pg_null_test (name, nullable_text, nullable_int, nullable_float, nullable_bool, nullable_time) 
 			VALUES (?, ?, ?, ?, ?, ?)`,
 			"allvalues", "hello", 42, 3.14, true, now)
@@ -1451,7 +1451,7 @@ CREATE TABLE pg_null_test (
 	})
 }
 
-// TestPGTypeConversionErrors 数据类型转换异常
+// TestPGTypeConversionErrors tests data type conversion errors
 func TestPGTypeConversionErrors(t *testing.T) {
 	pgOnly(t)
 
@@ -1473,12 +1473,12 @@ CREATE TABLE pg_type_test (
 	t.Run("WrongScanType", func(t *testing.T) {
 		type WrongType struct {
 			ID  int    `db:"id"`
-			Val string `db:"val"` // integer → string 实际上可以扫描成功
+			Val string `db:"val"` // integer → string can actually scan successfully
 		}
 		var wt WrongType
 		err := pgdb.Get(&wt, "SELECT * FROM pg_type_test LIMIT 1")
-		// PostgreSQL 驱动通常可以将 int 扫描到 string
-		// 这里主要验证不会 panic
+		// PostgreSQL driver can usually scan int to string
+		// Mainly verify it won't panic
 		if err != nil {
 			t.Logf("Scan int to string got error (driver dependent): %v", err)
 		}
@@ -1492,7 +1492,7 @@ CREATE TABLE pg_type_test (
 	})
 
 	t.Run("ConstraintViolation", func(t *testing.T) {
-		// 插入违反 NOT NULL 约束
+		// Insert violates NOT NULL constraint
 		_, err := pgdb.Exec("INSERT INTO pg_type_test (val) VALUES (NULL)")
 		if err == nil {
 			t.Error("expected constraint violation error, got nil")
@@ -1500,7 +1500,7 @@ CREATE TABLE pg_type_test (
 	})
 }
 
-// TestPGConnectionTimeout 连接超时和重试机制
+// TestPGConnectionTimeout tests connection timeout and retry
 func TestPGConnectionTimeout(t *testing.T) {
 	pgOnly(t)
 
@@ -1515,10 +1515,10 @@ func TestPGConnectionTimeout(t *testing.T) {
 	})
 
 	t.Run("QueryTimeout", func(t *testing.T) {
-		// 使用极短超时测试查询超时
+		// Use very short timeout to test query timeout
 		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Nanosecond)
 		defer cancel()
-		time.Sleep(1 * time.Millisecond) // 确保超时
+		time.Sleep(1 * time.Millisecond) // ensure timeout
 
 		var result int
 		err := pgdb.GetContext(ctx, &result, "SELECT 1")
@@ -1528,7 +1528,7 @@ func TestPGConnectionTimeout(t *testing.T) {
 	})
 }
 
-// TestPGConcurrency 并发访问测试
+// TestPGConcurrency tests concurrent access
 func TestPGConcurrency(t *testing.T) {
 	pgOnly(t)
 
@@ -1537,7 +1537,7 @@ func TestPGConcurrency(t *testing.T) {
 	multiExec(pgdb, create)
 
 	t.Run("ConcurrentReads", func(t *testing.T) {
-		// 先插入一些数据
+		// Insert some data first
 		seedPGData(pgdb, t)
 
 		var wg sync.WaitGroup
@@ -1764,7 +1764,7 @@ func TestPGBindExtInterface(t *testing.T) {
 // 7. Rebind 在 PostgreSQL 中的正确性
 // ========================================================
 
-// TestPGRebind 验证 Rebind 在 PostgreSQL 中正确转换为 $N 占位符
+// TestPGRebind verifies Rebind correctly converts to $N placeholders in PostgreSQL
 func TestPGRebind(t *testing.T) {
 	pgOnly(t)
 

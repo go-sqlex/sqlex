@@ -5,9 +5,9 @@ import (
 	"testing"
 )
 
-// TestCompileNamedQuery_EdgeCases 覆盖 compileNamedQuery 在多种 SQL 词法元素下的行为。
-// 重点是验证：字符串字面量 / 双引号标识符 / 反引号标识符 / dollar-quoted string /
-// 行注释 / 块注释 等范围内的 :name 不被错误识别为命名参数。
+// TestCompileNamedQuery_EdgeCases verifies compileNamedQuery behavior across SQL lexical elements.
+// Focus: :name inside string literals, double-quoted identifiers, backtick identifiers,
+// dollar-quoted strings, line comments, and block comments must NOT be parsed as named parameters.
 func TestCompileNamedQuery_EdgeCases(t *testing.T) {
 	cases := []struct {
 		name         string

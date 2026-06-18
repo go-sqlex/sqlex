@@ -1,4 +1,4 @@
-// testinfra_test.go — PostgreSQL 专用集成测试基础设施
+// testinfra_test.go — PostgreSQL integration test infrastructure
 package pg_test
 
 import (

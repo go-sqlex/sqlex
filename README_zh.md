@@ -39,7 +39,7 @@
 - 🎯 **NamedExt/BindExt 统一接口** — DB、Tx 和 Conn 共享相同的扩展方法签名
 - 🛠️ **多驱动支持** — PostgreSQL、MySQL、SQLite、Oracle、SQL Server
 - 🛡️ **StrictMode 严格模式** — 默认关闭（宽松模式），可通过 `SetStrict(true)` 开启，开发阶段尽早发现字段不匹配问题
-- ⚡ **Go 1.24 现代化** — `any` 类型、模块化文件结构、增强错误信息
+- ⚡ **Go 1.21+ 现代化** — `any` 类型、模块化文件结构、增强错误信息
 
 ## 安装
 
@@ -47,7 +47,7 @@
 go get github.com/go-sqlex/sqlex
 ```
 
-要求 Go 1.24 或更高版本。
+要求 Go 1.21 或更高版本。
 
 ## 快速开始
 
@@ -131,7 +131,7 @@ func main() {
 
 ### 代码质量改进
 
-- Go 1.24 现代化：全面使用 `any` 替代 `interface{}`
+- Go 1.21+ 现代化：全面使用 `any` 替代 `interface{}`
 - 模块化文件结构：按职责拆分为 `db.go`、`tx.go`、`conn.go`、`stmt.go`、`row.go`、`rows.go`、`scan.go`
 - 接口化重构：`GetMapper()` 通过接口实现
 - StrictMode 严格模式：默认关闭（宽松模式），开启后查询结果列与结构体字段不匹配时返回包含列名和索引的详细错误
@@ -524,7 +524,7 @@ users, err = listUsers(conn, 18)
 
 | 功能 | jmoiron/sqlx | sqlex |
 |------|-------------|-------|
-| Go 版本要求 | 1.10+ | 1.24+ |
+| Go 版本要求 | 1.10+ | 1.21+ |
 | 结构体扫描 | ✅ | ✅ |
 | 命名查询 | ✅ | ✅ |
 | 绑定变量 | ✅ | ✅（增强：支持转义 `\?` 和 `??`，跳过字符串字面量、PG/MySQL 标识符、注释、PG dollar quoting 中的 `?`） |

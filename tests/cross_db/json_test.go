@@ -1,6 +1,4 @@
-// json_test.go — 任务 8: JsonValue[T] 类型的跨库集成测试
-//
-// 需求覆盖：7.1–7.6
+// json_test.go — cross-database integration tests for JsonValue[T] type
 package cross_db_test
 
 import (
