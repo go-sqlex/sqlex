@@ -204,19 +204,69 @@ err = db.NamedSelect(&users,
 
 > Note: `sqlex.In()` / `sqlex.Named()` are legacy top-level functions; the framework calls them automatically. Use the high-level methods above which include Rebind/Hook/StrictMode.
 
-#### Escape APIs for edge cases
+#### Slice argument handling (IN list context recognition)
+
+sqlex uses **IN list context recognition** to decide whether to auto-expand slices: slices are only expanded when `?` is in the `IN (?)` context. Two conditions must be met:
+
+1. **Strict `(?)` form**: only one `?` and optional ASCII whitespace (space/Tab/newline/CR) between `(` and `)`
+2. **The complete identifier immediately before `(` is the `IN` keyword** (case-insensitive); `NOT IN (?)` also matches
+
+Other `(?)` contexts (`ANY(?)` / `ALL(?)` / `VALUES (?)` / `func(?)` / scalar subquery `= (?)` etc.) are treated as single values — **no need for `AsValue` escape hatch**.
+
+**Detection rules**:
+
+| SQL pattern | Argument | Behavior | Notes |
+|---|---|---|---|
+| `WHERE id IN (?)` | `[]int{1,2,3}` | Expand | Preceded by IN |
+| `WHERE id NOT IN (?)` | `[]int{1,2,3}` | Expand | NOT IN still matches |
+| `WHERE id IN (\n  ?\n)` | `[]int{1,2,3}` | Expand | Multi-line IN (?) |
+| `WHERE x = ANY(?)` | `[]int{1,2,3}` | No expand | Preceded by ANY, not IN |
+| `INSERT ... VALUES (?)` | `[]int{1,2,3}` | No expand | Preceded by VALUES, not IN |
+| `SELECT func(?)` | `[]int{1,2,3}` | No expand | Preceded by function name |
+| `WHERE x = (?)` | `[]int{1,2,3}` | No expand | Preceded by `=`, not IN |
+| `WHERE col_in (?)` | `[]int{1,2,3}` | No expand | Full token is `col_in`, not IN |
+| `IN (?, ?, ?)` | `1, 2, 3` scalars | No expand | Multiple `?` → user already expanded |
+| `WHERE x = ?` | `[]int{1,2,3}` | No expand | `?` not in `(?)` form |
+
+**Escape hatch APIs**:
 
 ```go
 import "github.com/go-sqlex/sqlex"
 
-// sqlex.AsValue(v) — force no expansion (even in (?) context)
-db.Select(&rows, `SELECT * FROM t WHERE id = ANY(?)`,
-    sqlex.AsValue(pq.Array([]int{1, 2, 3})))
+// ① sqlex.AsValue(v) — force no expansion (even in IN (?) context)
+db.Select(&rows, `SELECT * FROM t WHERE id IN (?)`,
+    sqlex.AsValue([]int{1, 2, 3})) // entire slice as single value to driver
 
-// sqlex.AsList(slice) — force expansion (even outside (?) context)
-db.Exec(`SELECT some_func(?, ?)`, 100,
-    sqlex.AsList([]int{1, 2, 3}))
+// ② sqlex.AsList(slice) — force expansion (even outside IN (?) context)
+db.Select(&rows, `SELECT * FROM t WHERE id = ANY(?)`,
+    sqlex.AsList([]int{1, 2, 3})) // force expand to ?, ?, ?
+
+// ③ Other native approaches still work
+db.Exec(`INSERT INTO users (tags) VALUES (?)`, pq.Array([]int{1, 2, 3})) // driver.Valuer
+data, _ := json.Marshal([]int{1, 2, 3})
+db.Exec(`INSERT INTO t (json_col) VALUES (?)`, data) // []byte is a standard driver type
 ```
+
+> Note: `ANY(?)` / `VALUES (?)` etc. now default to **no expansion** — just pass the slice directly or wrap with `pq.Array`. No `AsValue` needed.
+
+**Priority** (high to low):
+
+1. `sqlex.AsValue(v)` / `sqlex.AsList(s)` — explicit declaration, highest priority
+2. `driver.Valuer` interface (including `pq.Array`) — treated as single value
+3. `[]byte` — standard driver type, treated as single value
+4. `IN (?)` context match + slice — auto-expand
+5. Other positions + slice — no expansion, passed as single value (driver will likely error)
+
+**Known edge case**: A comment between `IN` and `(` (e.g. `IN /* c */ (?)`) prevents IN recognition and won't expand. This pattern is extremely rare; use `sqlex.AsList` as a fallback if needed.
+
+**Empty slice handling** (context-sensitive):
+
+| Scenario | Behavior |
+|---|---|
+| `IN (?)` context + `[]int{}` | Error `sqlex: empty slice cannot be expanded into IN ()` (IN () is invalid SQL) |
+| Non-IN context (`WHERE x = ?` / `VALUES (?)`) + `[]int{}` | OK, entire slice passed to driver |
+| `sqlex.AsValue([]int{})` | OK (already single-value semantics) |
+| `sqlex.AsList([]int{})` | Error `sqlex.AsList: empty slice` (expanding to nothing is meaningless) |
 
 ### Prepared Statements
 

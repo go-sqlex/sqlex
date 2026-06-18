@@ -200,13 +200,11 @@ func AsList(slice any) any { return listArg{v: slice} }
 // line/block comments will not be recognized as placeholders; `\?` and `??` output a literal ?.
 // Lexical rules are symmetric with Rebind.
 //
-// Slice expansion rules ("strict (?) context recognition"):
-//   - ? in strict (?) form (only ? and optional ASCII whitespace between ( and )) + slice -> expand to ?, ?, ?
-//   - ? elsewhere + slice -> no expansion, passed as a single value to the driver
-//   - sqlex.AsValue(v)    -> force no expansion (even if ? is in (?) form)
-//   - sqlex.AsList(slice) -> force expansion (even if ? is not in (?) form)
-//   - driver.Valuer       -> .Value() is called first, then the above rules apply
-//   - []byte              -> treated as a single value (standard driver.Value type)
+// Slice expansion rules ("IN list context recognition"):
+//   - IN (?) (strict (?) form + preceded by IN keyword, including NOT IN) + slice -> expand
+//   - Other positions (ANY(?)/VALUES(?)/func(?) etc.) + slice -> single value, no expand
+//   - sqlex.AsValue(v)    -> force no expand
+//   - sqlex.AsList(slice) -> force expand
 func In(query string, args ...any) (string, []any, error) {
 	type argMeta struct {
 		v           reflect.Value
@@ -304,12 +302,12 @@ func In(query string, args ...any) (string, []any, error) {
 		// Expansion logic:
 		//   forceSingle (AsValue)     -> never expand
 		//   forceExpand (AsList)      -> always expand
-		//   default                   -> expand when length>0 and inParen
+		//   default                   -> expand when length>0 and inParen (IN (?) context)
 		shouldExpand := argMeta.length > 0 &&
 			!argMeta.forceSingle &&
 			(inParen || argMeta.forceExpand)
 
-		// Strict (?) form + empty slice -> reject (generating IN () is invalid SQL)
+		// IN (?) context + empty slice -> reject (generating IN () is invalid SQL)
 		if argMeta.v.IsValid() && argMeta.length == 0 &&
 			!argMeta.forceSingle && inParen {
 			return "", nil, errors.New("sqlex: empty slice cannot be expanded into IN ()")
@@ -317,7 +315,7 @@ func In(query string, args ...any) (string, []any, error) {
 
 		if !shouldExpand {
 			if argMeta.v.IsValid() {
-				// Slice not expanded (including AsValue / non-(?) form empty slice) -> entire slice as single value
+				// Slice not expanded (including AsValue / non-IN(?) context empty slice) -> entire slice as single value
 				newArgs = append(newArgs, argMeta.v.Interface())
 			} else {
 				newArgs = append(newArgs, argMeta.i)
@@ -342,21 +340,16 @@ func In(query string, args ...any) (string, []any, error) {
 	return buf.String(), newArgs, nil
 }
 
-// nextPlaceholder finds the next real ? placeholder position in query starting from start.
-// It automatically skips string literals, double/backtick-quoted identifiers, dollar-quoted strings,
-// line/block comments, and \? and ?? escapes. Returns idx=-1 if not found.
+// nextPlaceholder finds the next ? placeholder from start, skipping string literals,
+// identifiers, comments, and \? / ?? escapes. Returns idx=-1 if not found.
 //
-// inParen indicates whether the ? is in the strict (?) form: only one ? and optional ASCII
-// whitespace (' ' / '\t' / '\n' / '\r') are allowed between ( and ). This is the core
-// heuristic sqlex uses to distinguish IN list context from other contexts.
-//
-// Known edge case: ANY(?) / ALL(?) / func(?) and other "preceded by a letter" patterns are
-// still recognized as (?); users must use sqlex.AsValue to explicitly suppress expansion.
+// inParen=true means ? is in IN (?) context: strict (?) form + ( preceded by IN
+// (case-insensitive, including NOT IN). Only this triggers slice expansion.
 func nextPlaceholder(query string, start int) (idx int, inParen bool) {
-	afterParen := false // left side has seen ( + only ASCII whitespace
+	parenPos := -1 // position of the most recent (; -1 = no adjacent (
 	for i := start; i < len(query); {
 		if end, _, skip := scanSkipSegment(query, i); skip {
-			afterParen = false // Lexical segment breaks the adjacency of ( and ?
+			parenPos = -1 // lexical segment breaks adjacency
 			i = end
 			continue
 		}
@@ -365,29 +358,31 @@ func nextPlaceholder(query string, start int) (idx int, inParen bool) {
 		if c == '?' {
 			// \? / ?? escape: skip
 			if i > 0 && query[i-1] == '\\' {
-				afterParen = false
+				parenPos = -1
 				i++
 				continue
 			}
 			if i+1 < len(query) && query[i+1] == '?' {
-				afterParen = false
+				parenPos = -1
 				i += 2
 				continue
 			}
-			if afterParen && hasMatchingCloseParen(query, i+1) {
+			// IN list context: ( adjacent to ?, ? followed by ), and ( preceded by IN
+			if parenPos >= 0 && hasMatchingCloseParen(query, i+1) &&
+				precededByIn(query, parenPos) {
 				return i, true
 			}
 			return i, false
 		}
 
-		// Maintain afterParen: ( enters, whitespace keeps, anything else leaves
+		// Maintain parenPos: ( records, whitespace keeps, others reset
 		switch {
 		case c == '(':
-			afterParen = true
+			parenPos = i
 		case isASCIISpace(c):
 			// keep
 		default:
-			afterParen = false
+			parenPos = -1
 		}
 		i++
 	}
@@ -399,9 +394,14 @@ func isASCIISpace(c byte) bool {
 	return c == ' ' || c == '\t' || c == '\n' || c == '\r'
 }
 
-// hasMatchingCloseParen looks ahead from start, skipping ASCII whitespace, and checks whether
-// the next non-whitespace character is ). Does not skip comments/strings — those characters
-// will cause detection to fail; users can use sqlex.AsList to force expansion.
+// isIdentByte checks if a byte is a valid SQL identifier character.
+func isIdentByte(c byte) bool {
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+		(c >= '0' && c <= '9') || c == '_'
+}
+
+// hasMatchingCloseParen checks if the next non-whitespace char after start is ).
+// Does not skip comments/strings; use sqlex.AsList to force expansion in those cases.
 func hasMatchingCloseParen(query string, start int) bool {
 	for j := start; j < len(query); j++ {
 		c := query[j]
@@ -411,6 +411,28 @@ func hasMatchingCloseParen(query string, start int) bool {
 		return c == ')'
 	}
 	return false
+}
+
+// precededByIn checks if the identifier immediately before ( at parenPos is the IN
+// keyword (case-insensitive). Full token comparison: col_in / t.in are not misidentified.
+func precededByIn(query string, parenPos int) bool {
+	j := parenPos - 1
+	for j >= 0 && isASCIISpace(query[j]) {
+		j--
+	}
+	end := j
+	for j >= 0 && isIdentByte(query[j]) {
+		j--
+	}
+	tokenStart := j + 1
+	if end-tokenStart+1 != 2 { // token length must be exactly 2
+		return false
+	}
+	if c0, c1 := query[tokenStart], query[tokenStart+1]; (c0|0x20) != 'i' || (c1|0x20) != 'n' {
+		return false
+	}
+	// Qualified name (e.g. t.in) is not the IN keyword
+	return tokenStart == 0 || query[tokenStart-1] != '.'
 }
 
 func appendReflectSlice(args []any, v reflect.Value, vlen int) []any {

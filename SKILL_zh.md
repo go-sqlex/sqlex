@@ -80,16 +80,26 @@ db.NamedExec(`INSERT INTO users (name, email) VALUES (:name, :email)`, User{Name
 ### 3.3 IN 查询（自动展开）
 
 ```go
-// 位置参数：自动检测切片 + 严格 (?) 语境识别
+// 位置参数：自动检测切片 + IN 列表语境识别
 db.Select(&users, "SELECT * FROM users WHERE id IN (?)", []int{1, 2, 3})
 
 // 命名参数：内置 IN 展开
 db.NamedSelect(&users, `SELECT * FROM users WHERE id IN (:ids)`, map[string]any{"ids": []int{1, 2, 3}})
-
-// 逃生通道：
-db.Select(&rows, `SELECT * FROM t WHERE id = ANY(?)`, sqlex.AsValue(pq.Array([]int{1, 2, 3})))
-db.Exec(`SELECT some_func(?, ?)`, 100, sqlex.AsList([]int{1, 2, 3}))
 ```
+
+**IN 列表语境识别规则**：切片自动展开需同时满足 ① 严格 `(?)` 形态（`(` 与 `)` 之间仅一个 `?` 加可选空白）② `(` 前紧邻的完整标识符是 `IN`（大小写不敏感，含 `NOT IN`）。其他 `(?)` 语境一律视为单值，**无需 `AsValue` 兜底**。
+
+| SQL 形态 | 切片参数 | 行为 |
+|---|---|---|
+| `IN (?)` / `NOT IN (?)` | 切片 | ✅ 展开 |
+| `IN (?, ?, ?)` | 多个标量 | 不展开 |
+| `WHERE x = ?` | 切片 | 不展开（整体下发） |
+| `ANY(?)` / `ALL(?)` / `VALUES (?)` / `func(?)` | 切片 | 不展开（整体下发，正确行为） |
+| `col_in (?)` / `t.in (?)` | 切片 | 不展开（完整 token 比较，不误判 IN） |
+
+**逃生通道**：`sqlex.AsValue(v)` 强制不展开（即使处于 IN 语境）| `sqlex.AsList(slice)` 强制展开（即使不在 IN 语境，如 `ANY(?)` 想展开成列表）
+
+**已知边界**：`IN /* 注释 */ (?)` 会识别不到 IN 而不展开，此种写法极罕见，必要时用 `AsList` 兜底。
 
 ### 3.4 事务管理
 
@@ -154,9 +164,10 @@ db.AddHook(&MetricsHook{})
 2. **事务使用 `CloseWithErr`** — `defer func() { tx.CloseWithErr(err) }()`
 3. **生产环境使用 Context 方法** — `GetContext`/`SelectContext` 支持超时控制
 4. **NamedSelect + IN** — 无需手动调用 `In()`
-5. **初始化时注册 Hook** — Tx/Conn 自动继承 DB 的 Hook
-6. **PostgreSQL JSONB `?` 操作符** — 用 `??` 转义
-7. **StrictMode 按需开启** — 默认宽松；开发时 `db.SetStrict(true)` 助查问题
+5. **ANY(?)/VALUES(?) 自动安全** — 默认不再展开，无需 `AsValue` 兜底
+6. **初始化时注册 Hook** — Tx/Conn 自动继承 DB 的 Hook
+7. **PostgreSQL JSONB `?` 操作符** — 用 `??` 转义
+8. **StrictMode 按需开启** — 默认宽松；开发时 `db.SetStrict(true)` 助查问题
 
 ### ⚠️ 常见陷阱
 
@@ -179,7 +190,7 @@ db.AddHook(&MetricsHook{})
 | CloseWithErr | 根据 error 自动 Commit/Rollback |
 | ExecFunc | Tx 互斥锁保护下执行函数 |
 | NamedExt/BindExt | DB/Tx 统一编程接口 |
-| Select/Get 自动 IN | 检测切片参数自动展开 IN 子句 |
+| Select/Get 自动 IN | 检测切片参数 + IN 列表语境识别（仅 `IN (?)` 展开） |
 | StrictMode | 默认宽松，可开启严格检查 |
 | 自动 Rebind | 所有查询方法自动将 `?` 转换为目标数据库占位符 |
 | Conn 增强 | 与 DB/Tx 接口完全对齐 |
@@ -205,6 +216,8 @@ db.AddHook(&MetricsHook{})
 | `Select/SelectContext` | 查询多行（接受 Queryer） |
 | `Get/GetContext` | 查询单行（接受 Queryer） |
 | `In` | 展开 IN 切片参数 |
+| `AsValue` | 强制不展开（即使处于 IN(?) 语境） |
+| `AsList` | 强制展开（即使不在 IN(?) 语境） |
 | `Named` | 命名参数绑定 |
 | `Rebind` | 转换绑定变量格式 |
 

@@ -83,16 +83,26 @@ db.NamedExec(`INSERT INTO users (name, email) VALUES (:name, :email)`, User{Name
 ### 3.3 IN Queries (auto-expansion)
 
 ```go
-// Positional args: auto-detects slice + strict (?) context detection
+// Positional args: auto-detects slice + IN list context recognition
 db.Select(&users, "SELECT * FROM users WHERE id IN (?)", []int{1, 2, 3})
 
 // Named args: built-in IN expansion
 db.NamedSelect(&users, `SELECT * FROM users WHERE id IN (:ids)`, map[string]any{"ids": []int{1, 2, 3}})
-
-// Escape hatches:
-db.Select(&rows, `SELECT * FROM t WHERE id = ANY(?)`, sqlex.AsValue(pq.Array([]int{1, 2, 3})))
-db.Exec(`SELECT some_func(?, ?)`, 100, sqlex.AsList([]int{1, 2, 3}))
 ```
+
+**IN list context recognition**: slice auto-expansion requires both ① strict `(?)` form (only `?` + optional whitespace between `(` and `)`) and ② the complete identifier before `(` is `IN` (case-insensitive, including `NOT IN`). Other `(?)` contexts are treated as single values — **no `AsValue` needed**.
+
+| SQL pattern | Slice arg | Behavior |
+|---|---|---|
+| `IN (?)` / `NOT IN (?)` | slice | Expand |
+| `IN (?, ?, ?)` | scalars | No expand |
+| `WHERE x = ?` | slice | No expand (single value) |
+| `ANY(?)` / `ALL(?)` / `VALUES (?)` / `func(?)` | slice | No expand (correct behavior) |
+| `col_in (?)` / `t.in (?)` | slice | No expand (full token comparison) |
+
+**Escape hatches**: `sqlex.AsValue(v)` force no expand (even in IN context) | `sqlex.AsList(slice)` force expand (even outside IN context, e.g. `ANY(?)`)
+
+**Known edge case**: `IN /* comment */ (?)` prevents IN recognition; use `AsList` as fallback.
 
 ### 3.4 Transaction Management
 
@@ -157,9 +167,10 @@ db.AddHook(&MetricsHook{})
 2. **Use `CloseWithErr` for transactions** — `defer func() { tx.CloseWithErr(err) }()`
 3. **Use Context methods in production** — `GetContext`/`SelectContext` for timeout control
 4. **NamedSelect + IN** — No need to manually call `In()`
-5. **Register Hooks at initialization** — Tx/Conn auto-inherit DB's Hooks
-6. **PostgreSQL JSONB `?` operator** — Use `??` escape
-7. **StrictMode optional** — Default lenient; enable `db.SetStrict(true)` for development
+5. **ANY(?)/VALUES(?) auto-safe** — No longer expand by default; no `AsValue` needed
+6. **Register Hooks at initialization** — Tx/Conn auto-inherit DB's Hooks
+7. **PostgreSQL JSONB `?` operator** — Use `??` escape
+8. **StrictMode optional** — Default lenient; enable `db.SetStrict(true)` for development
 
 ### ⚠️ Common Pitfalls
 
@@ -182,7 +193,7 @@ db.AddHook(&MetricsHook{})
 | CloseWithErr | Auto Commit/Rollback based on error |
 | ExecFunc | Tx mutex-protected function execution |
 | NamedExt/BindExt | DB/Tx unified programming interface |
-| Select/Get auto-IN | Detects slice args and auto-expands IN clause |
+| Select/Get auto-IN | Detects slice args + IN list context recognition (only `IN (?)` expands) |
 | StrictMode | Default lenient, can enable strict checking |
 | Auto-Rebind | All query methods auto-convert `?` |
 | Conn enhancement | Fully aligned with DB/Tx interface |
@@ -208,6 +219,8 @@ db.AddHook(&MetricsHook{})
 | `Select/SelectContext` | Query multiple rows (accepts Queryer) |
 | `Get/GetContext` | Query single row (accepts Queryer) |
 | `In` | Expand IN slice args |
+| `AsValue` | Force no expansion (even in IN(?) context) |
+| `AsList` | Force expansion (even outside IN(?) context) |
 | `Named` | Named parameter binding |
 | `Rebind` | Convert bind variable format |
 
