@@ -7,14 +7,33 @@
 
 # sqlex
 
-> A modern enhancement of Go's `database/sql` — inheriting all capabilities of [jmoiron/sqlx](https://github.com/jmoiron/sqlx) with added Hook aspects, generic JSON types, and more.
+> A **drop-in replacement** for [jmoiron/sqlx](https://github.com/jmoiron/sqlx) — 100% API-compatible, with added Hook aspects, generic JSON types, bug fixes, and more.
+
+**sqlex is fully API-compatible with sqlx.** All sqlx methods (`Get`, `Select`, `Exec`, `NamedQuery`, `Preparex`, etc.) work identically. Migrating takes 30 seconds — just change the import path. New features are purely additive and optional.
+
+```diff
+- import "github.com/jmoiron/sqlx"
++ import "github.com/go-sqlex/sqlex"
+```
+
+What you get for free after migrating:
+
+- 🚀 **Auto-Rebind** — write `?` everywhere, works on PostgreSQL (`$1`), MySQL (`?`), SQLite (`?`), SQL Server (`@p1`). No more manual `db.Rebind()`. Including `Preparex`.
+- 🐛 **SQL parsing fixes** — colons in strings, `::` type casts, `?` in comments are correctly handled. Silent bugs from sqlx are gone.
+- 🎯 **Unified interfaces** — `Ext` / `ExtContext` / `NamedExt` / `BindExt` / `Preparer` / `PreparerContext` with compile-time checks. Write `func f(ext NamedExt)` and pass DB, Tx, or Conn.
+- 🔀 **Auto IN expansion** — slices in `IN (?)` detected and expanded automatically on all methods.
+- 🪝 **Hook system** — pluggable SQL interceptors for logging, tracing, metrics (onion model).
+- 📦 **JsonValue[T]** — generic JSON column type with auto serialize/deserialize.
+- 🛡️ **StrictMode** — lenient by default (matching sqlx `Unsafe()`), optionally strict for debugging.
+
+→ [Migration Guide](#migration-from-jmoironsqlx)
 
 ## Table of Contents
 
-- [Highlights](#highlights)
 - [Installation](#installation)
+- [Migration from jmoiron/sqlx](#migration-from-jmoironsqlx)
 - [Quick Start](#quick-start)
-- [Features](#features)
+- [New Features](#new-features)
 - [Usage Examples](#usage-examples)
   - [Basic CRUD](#basic-crud)
   - [Named Parameter Queries](#named-parameter-queries)
@@ -24,27 +43,11 @@
   - [JsonValue[T]](#jsonvaluet)
   - [Hook Aspects](#hook-aspects)
   - [StrictMode](#strictmode)
-  - [NamedExt / BindExt Unified Interfaces](#namedext--bindext-unified-interfaces)
+  - [NamedExt / BindExt Unified Interfaces](#unified-interfaces)
 - [Comparison with jmoiron/sqlx](#comparison-with-jmoironsqlx)
 - [Bug Fixes & Improvements](#bug-fixes--improvements)
-- [Migration Guide](#migration-guide)
 - [Performance](#performance)
 - [License](#license)
-
-## Highlights
-
-- 🔄 **Fully compatible with database/sql** — all standard methods preserved, incremental enhancements
-- 🏗️ **Struct scanning** — `Get/Select` maps query results directly to Go structs
-- 📝 **Named parameters** — `:name` style named queries, supporting structs and maps
-- 🪝 **Hook aspects** — pluggable SQL execution interceptors (logging, tracing, metrics)
-- 📦 **JsonValue[T]** — generic JSON column type, mapping database JSON fields to strong types
-- 🔀 **Transparent IN expansion** — auto-detects slice args and expands IN clauses
-- 🚀 **Cross-database out of the box** — write SQL with `?` placeholders universally; the framework auto-converts to target database format (`$N`, `:argN`, `@pN`)
-- 🔐 **Enhanced transaction management** — `CloseWithErr` auto-commits/rolls back
-- 🎯 **NamedExt/BindExt unified interfaces** — DB, Tx, and Conn share the same extended method signatures
-- 🛠️ **Multi-driver support** — PostgreSQL, MySQL, SQLite, Oracle, SQL Server
-- 🛡️ **StrictMode** — off by default (lenient mode); enable with `SetStrict(true)` to catch field mismatches early in development
-- ⚡ **Go 1.21+ modernization** — `any` type, modular file structure, enhanced error messages
 
 ## Installation
 
@@ -54,22 +57,50 @@ go get github.com/go-sqlex/sqlex
 
 Requires Go 1.21 or later.
 
-### Version Specification
+## Migration from jmoiron/sqlx
 
-You can also pin to a specific version using semantic versioning:
+**30 seconds, 3 steps:**
 
-```bash
-# Latest version
-go get github.com/go-sqlex/sqlex@latest
+**1. Change import path:**
 
-# Specific version
-go get github.com/go-sqlex/sqlex@v1.5.0
+```go
+// old
+import "github.com/jmoiron/sqlx"
 
-# Or in go.mod
-require github.com/go-sqlex/sqlex v1.5.0
+// new
+import "github.com/go-sqlex/sqlex"
 ```
 
-For the list of available versions and releases, see [GitHub Releases](https://github.com/go-sqlex/sqlex/releases).
+**2. Change package references:**
+
+```go
+// old
+db, err := sqlx.Connect("postgres", dsn)
+
+// new
+db, err := sqlex.Connect("postgres", dsn)
+```
+
+**3. Update go.mod:**
+
+```bash
+go get github.com/go-sqlex/sqlex
+```
+
+**Done.** All your existing sqlx code works without changes.
+
+> **Note on StrictMode**: sqlex defaults to lenient mode (`strict=false`), matching sqlx's `db.Unsafe()` behavior (silently ignore extra columns). You kept `db.Unsafe()` in your codebase? No changes needed — sqlex inherits the same lenient default. To enable strict struct-field matching for debugging, call `db.SetStrict(true)`.
+
+### Gradual adoption
+
+New features are optional — adopt at your own pace:
+
+| Step | Action | Time |
+|------|--------|------|
+| 1 | Replace import path | 30s |
+| 2 | Switch transactions to `CloseWithErr` pattern | per-use |
+| 3 | Use `NamedGet`/`NamedSelect` instead of `NamedQuery` + manual scan | per-use |
+| 4 | Register custom Hooks (logging, tracing, metrics) | as needed |
 
 ## Quick Start
 
@@ -115,32 +146,21 @@ func main() {
 }
 ```
 
-## Features
+## New Features
 
-### Core capabilities inherited from sqlx
-
-- **Struct scanning**: `Get`, `Select`, `StructScan` map row results to Go structs
-- **Named queries**: `:name` style parameters via `NamedQuery`, `NamedExec`, `NamedStmt`
-- **Multi-driver binding**: `Rebind` auto-converts `?` to target database bindvars (`$1`, `:arg1`, `@p1`)
-- **IN clause expansion**: `In()` function expands slice args into multiple placeholders
-- **Multiple scan modes**: `StructScan`, `SliceScan`, `MapScan`
-- **Prepared statements**: `Preparex`, `PrepareNamed` with enhanced preparation
-- **Connection management**: `Connect` (with Ping), `Open`, `MustConnect`
-
-### sqlex new capabilities
+sqlex preserves all sqlx APIs and adds the following capabilities:
 
 | Feature | Description |
 |---------|-------------|
 | **Hook aspects** | `AddHook` — pluggable SQL execution interceptors (onion model) |
 | **JsonValue[T]** | `types.JsonValue[T]` — generic JSON column type |
 | **NamedGet/NamedSelect** | Named parameter convenience methods on DB/Tx (built-in IN expansion) |
-| **NamedExec/NamedExecContext** | Named parameter execution (built-in IN expansion) |
 | **CloseWithErr** | Auto Commit/Rollback based on error |
-| **NamedExt interface** | Unified named parameter programming interface for DB/Tx/Conn |
-| **BindExt interface** | Unified basic query programming interface for DB/Tx/Conn |
-| **Positional auto-IN** | `Select`/`Get`/`Exec`/`Queryx`/`QueryRowx`/`MustExec` (with Context versions) auto-detect slice args and expand IN clauses |
-| **Auto Rebind** | All query methods auto-convert `?` to target database placeholders, zero code change for cross-database support |
-| **StrictMode** | Default lenient mode (`strict=false`); enable with `SetStrict(true)` for detailed errors on column-field mismatch |
+| **Unified interfaces** | `Ext` / `ExtContext` / `NamedExt` / `BindExt` / `Preparer` / `PreparerContext` — DB, Tx, and Conn share identical method signatures with compile-time checks |
+| **Auto IN expansion** | All methods auto-detect slice args and expand IN clauses |
+| **Auto Rebind** | All query methods auto-convert `?` to target database placeholders |
+| **StrictMode** | Optional strict struct-field matching for debugging (off by default) |
+| **Cross-database out of the box** | Write SQL with `?` everywhere — works on PostgreSQL, MySQL, SQLite, SQL Server |
 
 ## Usage Examples
 
@@ -373,10 +393,21 @@ tx, _ := db.Beginx()    // inherits DB's strict setting
 conn, _ := db.Connx(ctx) // inherits DB's strict setting
 ```
 
-### NamedExt / BindExt Unified Interfaces
+### Unified Interfaces
+
+DB, Tx, and Conn implement a common set of interfaces (enforced by compile-time assertions):
+
+| Interface | Methods | Purpose |
+|-----------|---------|---------|
+| `Ext` | `Exec`, `Queryx`, `QueryRowx` | Basic query/execution |
+| `ExtContext` | `ExecContext`, `QueryxContext`, `QueryRowxContext` | Context-aware variants |
+| `NamedExt` | `NamedExec`, `NamedQuery`, `NamedGet`, `NamedSelect` | Named parameter queries |
+| `BindExt` | `BindNamed`, `Get`, `Select`, `Rebind`, `DriverName` | Positional parameter queries |
+| `Preparer` | `Preparex`, `PrepareNamed` | Prepared statement creation |
+| `PreparerContext` | `PreparexContext`, `PrepareNamedContext` | Context-aware preparation |
 
 ```go
-// NamedExt: write context-agnostic functions (named parameters)
+// Accept DB, Tx, or Conn via NamedExt
 func getUserByName(ext sqlex.NamedExt, name string) (*User, error) {
     var user User
     err := ext.NamedGet(&user, `SELECT * FROM users WHERE name = :name`,
@@ -384,17 +415,11 @@ func getUserByName(ext sqlex.NamedExt, name string) (*User, error) {
     return &user, err
 }
 
-// Works with DB, Tx, or Conn
 user, err := getUserByName(db, "Alice")
 tx, _ := db.Beginx()
 user, err = getUserByName(tx, "Bob")
-
-// BindExt: write context-agnostic functions (positional parameters)
-func listUsers(ext sqlex.BindExt, minAge int) ([]User, error) {
-    var users []User
-    err := ext.Select(&users, "SELECT * FROM users WHERE age > ?", minAge)
-    return users, err
-}
+conn, _ := db.Connx(ctx)
+user, err = getUserByName(conn, "Charlie")
 ```
 
 ## Comparison with jmoiron/sqlx
@@ -412,7 +437,7 @@ func listUsers(ext sqlex.BindExt, minAge int) ([]User, error) {
 | JsonValue[T] | ❌ | ✅ `types.JsonValue[T]` |
 | NamedGet/NamedSelect | ❌ | ✅ DB/Tx convenience methods |
 | CloseWithErr | ❌ | ✅ Auto transaction management |
-| NamedExt/BindExt interfaces | ❌ | ✅ DB/Tx/Conn unified interfaces |
+| Unified interfaces | ❌ DB/Tx methods overlap but no shared interface | ✅ `Ext` / `ExtContext` / `NamedExt` / `BindExt` / `Preparer` / `PreparerContext` — DB/Tx/Conn unified with compile-time checks |
 | Unicode named parameters | ⚠️ Unreliable | ❌ Not supported (ASCII only; Unicode elsewhere is safe) |
 | PostgreSQL `::` | ❌ Misidentified | ✅ Correctly handled |
 | Named query string literals | ❌ Colons misidentified | ✅ Skips colons in strings/comments |
@@ -432,46 +457,6 @@ sqlex fixes the following known issues from jmoiron/sqlx:
 - **Named parameter name rules**: Original allows digits at start (`:123`). sqlex requires `[A-Za-z_][A-Za-z0-9_.]*`.
 - **`::` handling**: Original misidentifies PG type cast `::` as named parameter. sqlex correctly skips it.
 - **Positional query cross-database failure**: Original `Select`/`Get`/`Exec` don't auto-Rebind, failing on PostgreSQL. sqlex auto-Rebinds all methods.
-
-## Migration Guide
-
-### From jmoiron/sqlx
-
-**1. Change import path:**
-
-```go
-// Old
-import "github.com/jmoiron/sqlx"
-
-// New
-import "github.com/go-sqlex/sqlex"
-```
-
-**2. Change package references:**
-
-```go
-// Old
-db, err := sqlx.Connect("postgres", dsn)
-
-// New
-db, err := sqlex.Connect("postgres", dsn)
-```
-
-**3. StrictMode default change:**
-
-sqlex defaults to lenient mode (`strict=false`), matching jmoiron/sqlx's `unsafe=true`. To catch mismatches early:
-
-```go
-db.SetStrict(true)
-```
-
-**4. Gradual adoption:**
-
-All new features are optional:
-- Step 1: Replace import path and package name (zero code changes needed)
-- Step 2: Switch transactions to `CloseWithErr` pattern
-- Step 3: Use `NamedGet/NamedSelect` instead of `NamedQuery` + manual scanning
-- Step 4: Register custom Hooks as needed (logging, tracing, metrics)
 
 ## Testing
 

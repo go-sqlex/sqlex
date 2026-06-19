@@ -2,14 +2,33 @@
 
 # sqlex
 
-> Go `database/sql` 的现代化增强封装 — 继承 [jmoiron/sqlx](https://github.com/jmoiron/sqlx) 全部能力，新增 Hook 切面、JSON 泛型类型等实用功能。
+> [jmoiron/sqlx](https://github.com/jmoiron/sqlx) 的**即插即用替代品** — 100% API 兼容，新增 Hook 切面、JSON 泛型类型、Bug 修复等实用功能。
+
+**与 sqlx 完全 API 兼容。** 所有 sqlx 方法（`Get`、`Select`、`Exec`、`NamedQuery`、`Preparex` 等）行为完全一致。迁移只需 30 秒 — 换个 import 路径即可。新功能纯增量，完全可选。
+
+```diff
+- import "github.com/jmoiron/sqlx"
++ import "github.com/go-sqlex/sqlex"
+```
+
+迁移后即可免费获得：
+
+- 🚀 **自动 Rebind** — 统一 `?` 写 SQL，PostgreSQL 自动转 `$1`、MySQL/SQLite 保持 `?`、SQL Server 转 `@p1`。无需手动 `db.Rebind()`，包括 `Preparex`。
+- 🐛 **SQL 解析修复** — 字符串中的冒号、`::` 类型转换、注释中的 `?` 正确跳过。sqlx 的隐蔽解析 bug 全部修复。
+- 🎯 **统一接口** — `Ext` / `ExtContext` / `NamedExt` / `BindExt` / `Preparer` / `PreparerContext`，编译期校验。写 `func f(ext NamedExt)` 即可接受 DB、Tx 或 Conn。
+- 🔀 **IN 子句自动展开** — 切片参数在 `IN (?)` 中自动检测并展开，覆盖所有方法。
+- 🪝 **Hook 系统** — 可插拔 SQL 拦截器，用于日志、追踪、指标（洋葱模型）。
+- 📦 **JsonValue[T]** — 泛型 JSON 列类型，自动序列化/反序列化。
+- 🛡️ **StrictMode** — 默认宽松（与 sqlx `Unsafe()` 一致），可选开启严格模式辅助调试。
+
+→ [迁移指南](#从-jmoironsqlx-迁移)
 
 ## 目录
 
-- [特性亮点](#特性亮点)
 - [安装](#安装)
+- [从 jmoiron/sqlx 迁移](#从-jmoironsqlx-迁移)
 - [快速开始](#快速开始)
-- [功能特性](#功能特性)
+- [新增功能](#新增功能)
 - [使用示例](#使用示例)
   - [基础 CRUD](#基础-crud)
   - [命名参数查询](#命名参数查询)
@@ -19,27 +38,11 @@
   - [JsonValue[T]](#jsonvaluet)
   - [Hook 切面](#hook-切面)
   - [StrictMode 严格模式](#strictmode-严格模式)
-  - [NamedExt 统一接口](#namedext-统一接口)
+  - [NamedExt 统一接口](#统一接口)
 - [与 jmoiron/sqlx 对比](#与-jmoironsqlx-对比)
 - [Bug 修复与优化](#bug-修复与优化)
-- [迁移指南](#迁移指南)
 - [性能说明](#性能说明)
 - [许可证](#许可证)
-
-## 特性亮点
-
-- 🔄 **完全兼容 database/sql** — 所有标准方法保持不变，增量增强
-- 🏗️ **结构体扫描** — `Get/Select` 将查询结果直接映射为 Go 结构体
-- 📝 **命名参数** — `:name` 风格的命名查询，支持结构体和 map
-- 🪝 **Hook 切面** — 可插拔的 SQL 执行拦截器（日志、追踪、指标）
-- 📦 **JsonValue[T]** — 泛型 JSON 列类型，数据库 JSON 字段直接映射为强类型
-- 🔀 **IN 查询透明化** — 自动检测切片参数并展开 IN 子句
-- 🚀 **跨数据库开箱即用** — 统一用 `?` 占位符写 SQL，框架自动转换为目标数据库格式（`$N`、`:argN`、`@pN`）
-- 🔐 **增强事务管理** — `CloseWithErr` 自动提交/回滚
-- 🎯 **NamedExt/BindExt 统一接口** — DB、Tx 和 Conn 共享相同的扩展方法签名
-- 🛠️ **多驱动支持** — PostgreSQL、MySQL、SQLite、Oracle、SQL Server
-- 🛡️ **StrictMode 严格模式** — 默认关闭（宽松模式），可通过 `SetStrict(true)` 开启，开发阶段尽早发现字段不匹配问题
-- ⚡ **Go 1.21+ 现代化** — `any` 类型、模块化文件结构、增强错误信息
 
 ## 安装
 
@@ -48,6 +51,51 @@ go get github.com/go-sqlex/sqlex
 ```
 
 要求 Go 1.21 或更高版本。
+
+## 从 jmoiron/sqlx 迁移
+
+**30 秒，3 步：**
+
+**1. 变更导入路径：**
+
+```go
+// 旧
+import "github.com/jmoiron/sqlx"
+
+// 新
+import "github.com/go-sqlex/sqlex"
+```
+
+**2. 变更包名引用：**
+
+```go
+// 旧
+db, err := sqlx.Connect("postgres", dsn)
+
+// 新
+db, err := sqlex.Connect("postgres", dsn)
+```
+
+**3. 更新 go.mod：**
+
+```bash
+go get github.com/go-sqlex/sqlex
+```
+
+**搞定。** 你现有的所有 sqlx 代码无需任何改动即可运行。
+
+> **关于 StrictMode**：sqlex 默认宽松模式（`strict=false`），与 sqlx 的 `db.Unsafe()` 行为一致（静默忽略多余列）。你的代码中用了 `db.Unsafe()`？无需改动 — sqlex 继承了相同的宽松默认值。如需在调试时启用严格结构体字段匹配，调用 `db.SetStrict(true)` 即可。
+
+### 渐进式采用
+
+新功能完全可选，可按自己的节奏逐步采用：
+
+| 步骤 | 操作 | 耗时 |
+|------|------|------|
+| 1 | 替换 import 路径 | 30s |
+| 2 | 将事务代码改为 `CloseWithErr` 模式 | 按需 |
+| 3 | 使用 `NamedGet`/`NamedSelect` 替代 `NamedQuery` + 手动扫描 | 按需 |
+| 4 | 按需注册自定义 Hook（日志、追踪、指标等） | 按需 |
 
 ## 快速开始
 
@@ -94,48 +142,21 @@ func main() {
 }
 ```
 
-## 功能特性
+## 新增功能
 
-### 继承自 sqlx 的核心能力
-
-- **结构体扫描**：`Get`、`Select`、`StructScan` 将行结果映射为 Go 结构体
-- **命名查询**：`:name` 风格参数，支持 `NamedQuery`、`NamedExec`、`NamedStmt`
-- **多驱动绑定**：`Rebind` 自动转换 `?` 为目标数据库的绑定变量（`$1`、`:arg1`、`@p1`）
-- **IN 子句展开**：`In()` 函数将切片参数展开为多个占位符
-- **扫描方式多样**：`StructScan`、`SliceScan`、`MapScan`
-- **预编译语句**：`Preparex`、`PrepareNamed` 支持增强的预编译
-- **连接管理**：`Connect`（含 Ping）、`Open`、`MustConnect`
-
-### Conn 设计定位
-
-`sqlex.Conn` 封装了 `database/sql.Conn`。虽然标准库 `sql.Conn` 的所有方法都带 `context.Context` 参数，但 sqlex 包装层提供了非 Context 便捷方法（内部委托 `context.Background()`），使 `Conn` 与 `DB`/`Tx` 的接口完全对齐。`Conn` 实现了 `Ext`、`ExtContext`、`NamedExt`、`BindExt`、`Preparer`、`PreparerContext` 全部接口，可以编写 `func doSomething(ext NamedExt)` 这样同时接受 DB/Tx/Conn 的通用数据访问函数。
-
-### Tx 并发安全说明
-
-`sqlex.Tx` 与标准库 `database/sql.Tx` 一样，**不是并发安全的**。不应在多个 goroutine 中并发使用同一个 `Tx` 实例。`Tx.ExecFunc` 是唯一提供内部互斥锁保护的方法，适用于需要在互斥锁保护下执行事务操作的场景。
-
-### sqlex 新增能力
+sqlex 保留所有 sqlx API，并新增以下能力：
 
 | 功能 | 说明 |
 |------|------|
 | **Hook 切面** | `AddHook` — 可插拔 SQL 执行拦截器（洋葱模型） |
 | **JsonValue[T]** | `types.JsonValue[T]` — 泛型 JSON 列类型 |
 | **NamedGet/NamedSelect** | DB/Tx 上的命名参数便捷查询方法（内置 IN 展开） |
-| **NamedExec/NamedExecContext** | 命名参数执行（内置 IN 展开） |
 | **CloseWithErr** | 根据 error 自动 Commit/Rollback |
-| **NamedExt 接口** | DB/Tx/Conn 统一命名参数编程接口 |
-| **BindExt 接口** | DB/Tx/Conn 统一基础查询编程接口 |
-| **位置参数自动 IN** | `Select`/`Get`/`Exec`/`Queryx`/`QueryRowx`/`MustExec`（含 Context 版）检测切片参数自动展开 IN 子句，与 NamedExt 行为一致 |
-| **自动 Rebind** | 所有查询方法自动将 `?` 转换为目标数据库占位符，跨数据库零改动。无需手动调用 `Rebind()`，包括 `Preparex`/`PreparexContext` 也自动 Rebind |
-| **StrictMode 严格模式** | 默认宽松模式（`strict=false`），静默忽略多余列。可通过 `SetStrict(true)` 开启严格模式，查询结果列与目标结构体字段不匹配时返回详细错误。strict 自动从 DB 传递到 Tx/Conn/Row/Rows/Stmt/NamedStmt |
-
-### 代码质量改进
-
-- Go 1.21+ 现代化：全面使用 `any` 替代 `interface{}`
-- 模块化文件结构：按职责拆分为 `db.go`、`tx.go`、`conn.go`、`stmt.go`、`row.go`、`rows.go`、`scan.go`
-- 接口化重构：`GetMapper()` 通过接口实现
-- StrictMode 严格模式：默认关闭（宽松模式），开启后查询结果列与结构体字段不匹配时返回包含列名和索引的详细错误
-- 增强错误信息：更详细的错误上下文
+| **统一接口** | `Ext` / `ExtContext` / `NamedExt` / `BindExt` / `Preparer` / `PreparerContext` — DB、Tx、Conn 共享完全一致的方法签名，编译期校验 |
+| **自动 IN 展开** | 所有方法自动检测切片参数并展开 IN 子句 |
+| **自动 Rebind** | 所有查询方法自动将 `?` 转换为目标数据库占位符 |
+| **StrictMode 严格模式** | 可选的严格结构体字段匹配（默认关闭） |
+| **跨数据库开箱即用** | 统一用 `?` 写 SQL — PostgreSQL、MySQL、SQLite、SQL Server 通吃 |
 
 ## 使用示例
 
@@ -478,10 +499,21 @@ conn, _ := db.Connx(ctx)       // 继承 DB 的 strict
 tx.SetStrict(false)  // 仅影响该 Tx
 ```
 
-### NamedExt 统一接口
+### 统一接口
+
+DB、Tx、Conn 实现了一套公共接口（编译期断言保证）：
+
+| 接口 | 方法 | 用途 |
+|-----------|---------|---------|
+| `Ext` | `Exec`, `Queryx`, `QueryRowx` | 基础查询/执行 |
+| `ExtContext` | `ExecContext`, `QueryxContext`, `QueryRowxContext` | Context 感知变体 |
+| `NamedExt` | `NamedExec`, `NamedQuery`, `NamedGet`, `NamedSelect` | 命名参数查询 |
+| `BindExt` | `BindNamed`, `Get`, `Select`, `Rebind`, `DriverName` | 位置参数查询 |
+| `Preparer` | `Preparex`, `PrepareNamed` | 预编译语句创建 |
+| `PreparerContext` | `PreparexContext`, `PrepareNamedContext` | Context 感知预编译 |
 
 ```go
-// NamedExt 接口让你编写不关心执行上下文的通用函数（命名参数）
+// 通过 NamedExt 接受 DB、Tx 或 Conn
 func getUserByName(ext sqlex.NamedExt, name string) (*User, error) {
     var user User
     err := ext.NamedGet(&user, `SELECT * FROM users WHERE name = :name`,
@@ -489,35 +521,11 @@ func getUserByName(ext sqlex.NamedExt, name string) (*User, error) {
     return &user, err
 }
 
-// 可以传入 DB、Tx 或 Conn
 user, err := getUserByName(db, "Alice")
-
 tx, _ := db.Beginx()
 user, err = getUserByName(tx, "Bob")
-
 conn, _ := db.Connx(ctx)
 user, err = getUserByName(conn, "Charlie")
-```
-
-### BindExt 统一接口
-
-```go
-// BindExt 接口让你编写不关心执行上下文的通用函数（位置参数）
-// 统一使用 ? 占位符，框架自动处理不同数据库的差异
-func listUsers(ext sqlex.BindExt, minAge int) ([]User, error) {
-    var users []User
-    err := ext.Select(&users, "SELECT * FROM users WHERE age > ?", minAge)
-    return users, err
-}
-
-// 可以传入 DB、Tx 或 Conn，在 MySQL 和 PostgreSQL 上同样工作
-users, err := listUsers(db, 18)
-
-tx, _ := db.Beginx()
-users, err = listUsers(tx, 18)
-
-conn, _ := db.Connx(ctx)
-users, err = listUsers(conn, 18)
 ```
 
 ## 与 jmoiron/sqlx 对比
@@ -535,8 +543,7 @@ users, err = listUsers(conn, 18)
 | JsonValue[T] | ❌ | ✅ `types.JsonValue[T]` |
 | NamedGet/NamedSelect | ❌ | ✅ DB/Tx 便捷方法（内置 IN 展开） |
 | CloseWithErr | ❌ | ✅ 自动事务管理 |
-| NamedExt 接口 | ❌ | ✅ DB/Tx/Conn 统一命名参数编程接口 |
-| BindExt 接口 | ❌ | ✅ DB/Tx/Conn 统一基础查询编程接口 |
+| 统一接口 | ❌ DB/Tx 方法重叠但无共享接口 | ✅ `Ext` / `ExtContext` / `NamedExt` / `BindExt` / `Preparer` / `PreparerContext` — DB/Tx/Conn 统一，编译期校验 |
 | Unicode 命名参数名 | ⚠️ 尝试支持但不可靠 | ❌ 不支持（参数名限 ASCII；SQL 其他位置 Unicode 安全） |
 | Unicode 表名/列名/值 | ✅ | ✅ |
 | PostgreSQL `::` | ❌ 会误判 | ✅ 正确处理 |
@@ -574,76 +581,6 @@ sqlex 在 jmoiron/sqlx 基础上修复了以下已知问题：
 | **Named 查询 Rebind 缺失** | `NamedGet`/`NamedSelect`/`NamedExec` 内部使用 `QUESTION` 绑定后，在无切片参数时缺少 Rebind 步骤，导致 PostgreSQL 等 `$N` 绑定类型的数据库上 Named 查询失败。sqlex 修复了 `autoIn` 函数，无论是否有切片参数均正确执行 Rebind |
 | **位置参数查询跨数据库失败** | 原版 `Select`/`Get`/`Exec` 等位置参数方法不做自动 Rebind，在 PostgreSQL 上使用 `?` 占位符会失败。sqlex 所有查询方法均自动 Rebind，实现跨数据库统一 `?` 风格 |
 | **位置参数 IN 切片展开覆盖不全** | 早期实现仅 `Select`/`Get` 接入 autoIn，`Exec`/`Queryx`/`QueryRowx`/`MustExec`/`NamedQuery` 漏掉，导致用户调用 `db.Exec("DELETE FROM t WHERE id IN (?)", ids)` 直接报参数不匹配。sqlex 已在 `BindExt`/`NamedExt` 全路径补齐，并写入接口契约保证防回归 |
-
-## 迁移指南
-
-### 从 jmoiron/sqlx 迁移
-
-**1. 变更导入路径**
-
-```go
-// 旧
-import "github.com/jmoiron/sqlx"
-
-// 新
-import "github.com/go-sqlex/sqlex"
-```
-
-**2. 变更包名引用**
-
-```go
-// 旧
-db, err := sqlx.Connect("postgres", dsn)
-var users []User
-sqlx.Select(db, &users, "SELECT * FROM users")
-
-// 新
-db, err := sqlex.Connect("postgres", dsn)
-var users []User
-sqlex.Select(db, &users, "SELECT * FROM users")
-```
-
-**3. 常用方法速查**
-
-| 用途 | 方法 |
-|------|------|
-| 连接数据库 | `sqlex.Connect(driver, dsn)` |
-| 查询单行 | `db.Get(&dest, query, args...)` |
-| 查询多行 | `db.Select(&dest, query, args...)` |
-| 命名查询 | `db.NamedGet(&dest, query, param)` |
-| IN 查询 | `db.NamedSelect(&dest, query, param)` — 内置 IN 展开 |
-| 开启事务 | `db.Beginx()` |
-| 自动提交/回滚 | `defer tx.CloseWithErr(err)` |
-| 注册 Hook | `db.AddHook(hook)` |
-
-**4. StrictMode 默认值变更**
-
-sqlex 默认宽松模式（`strict=false`），静默忽略查询结果中没有对应结构体字段的列。这与 jmoiron/sqlx 的 `unsafe=true`（即 `db.Unsafe()`）行为一致。
-
-如果你希望在开发阶段尽早发现字段不匹配问题，可以开启严格模式：
-
-```go
-// 方式一：全局开启（影响该 DB 实例创建的所有 Tx/Conn）
-db.SetStrict(true)
-
-// 方式二：仅对特定事务开启
-tx, _ := db.Beginx()
-tx.SetStrict(true)
-```
-
-| 原版 sqlx | sqlex | 行为 |
-|-----------|-------|------|
-| `unsafe=true` / `db.Unsafe()` | `strict=false`（默认） | 宽松模式：列无对应字段时静默忽略 |
-| `unsafe=false`（默认） | `strict=true` | 严格模式：列无对应字段时报错 |
-
-**5. 渐进式采用新功能**
-
-所有新功能都是可选的，可以逐步采用：
-- 第一步：替换导入路径和包名（零改动即可运行）
-- 第二步：将事务代码改为 `CloseWithErr` 模式
-- 第三步：使用 `NamedGet/NamedSelect` 替代 `NamedQuery` + 手动扫描
-- 第四步：按需注册自定义 Hook（日志、追踪、指标等）
-
 
 ## 测试
 
