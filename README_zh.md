@@ -234,7 +234,12 @@ _, err = db.NamedExecContext(ctx,
 
 #### ⚠️ 切片参数处理规则（严格 `(?)` 语境识别）
 
-sqlex 采用**严格 `(?)` 语境识别**判断是否自动展开切片：只有当 `?` 处于严格的 `(?)` 形态——即 `(` 与 `)` 之间只有一个 `?` 和可选 ASCII 空白（空格/Tab/换行/回车）——切片参数才会自动展开为 `?, ?, ?`。
+sqlex 采用**严格 `(?)` 语境识别**判断是否自动展开切片，须同时满足两个条件：
+
+1. **严格 `(?)` 形态**：`(` 与 `)` 之间只有一个 `?` 和可选 ASCII 空白（空格/Tab/换行/回车）
+2. **`(` 前紧邻的完整标识符是 `IN`**（大小写不敏感）；`NOT IN (?)` 同样生效
+
+其他 `(?)` 语境（`ANY(?)` / `VALUES (?)` / `func(?)` / 标量子查询 `= (?)` 等）均视为单值——**无需 `AsValue` 兜底**。
 
 **判定规则**：
 
@@ -421,16 +426,14 @@ db.NamedExec(`INSERT INTO articles (title, metadata) VALUES (:title, :metadata)`
 // 读取 — 自动反序列化
 var a Article
 db.Get(&a, "SELECT * FROM articles WHERE id = ?", 1)
-meta, ok := a.Metadata.SafeGet()  // 安全获取，ok 表示非 NULL
-fmt.Println(meta.Tags)  // ["go", "sql"]
-
-// 处理 NULL 值
-defaultMeta := ArticleMeta{Tags: []string{}}
-meta = a.Metadata.SafeGetOrDefault(defaultMeta)
-
+if a.Metadata.Valid {
+    fmt.Println(a.Metadata.Val.Tags) // ["go", "sql"]
+}
+// ValueOrZero：!Valid 时返回零值
+meta := a.Metadata.ValueOrZero()
 // JSON 序列化/反序列化（实现了 json.Marshaler/Unmarshaler）
-data, _ := json.Marshal(article.Metadata)  // 输出 JSON
-json.Unmarshal(data, &article.Metadata)     // 解析 JSON
+data, _ := json.Marshal(a.Metadata)
+json.Unmarshal(data, &a.Metadata)
 ```
 
 ### Hook 切面
@@ -620,7 +623,7 @@ go test -count=1 -timeout=60s ./types/ ./reflectx/
 
 | 环境变量 | 设置 | 行为 |
 |---|---|---|
-| `SQLX_MYSQL_DSN` | 完整 DSN（覆盖自动拼装） | 用此 DSN |
+| `SQLX_MYSQL_DSN` | 完整 DSN | 用此 DSN |
 | `SQLX_MYSQL_DSN` | `skip` 或空 | 跳过 MySQL 测试 |
 | `SQLX_POSTGRES_DSN` | 同上 | |
 | `SQLX_SQLITE_DSN` | 同上（默认 `:memory:`） | |

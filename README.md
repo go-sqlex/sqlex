@@ -205,6 +205,14 @@ err = db.NamedGet(&result, `SELECT * FROM users WHERE name = :name`, params)
 // NamedSelect — query multiple rows
 var results []User
 err = db.NamedSelect(&results, `SELECT * FROM users WHERE name = :name`, params)
+
+// NamedQuery — return *Rows for manual iteration
+rows, err := db.NamedQuery(`SELECT * FROM users WHERE name = :name`, params)
+defer rows.Close()
+for rows.Next() {
+    var u User
+    rows.StructScan(&u)
+}
 ```
 
 ### IN Queries
@@ -288,6 +296,26 @@ db.Exec(`INSERT INTO t (json_col) VALUES (?)`, data) // []byte is a standard dri
 | `sqlex.AsValue([]int{})` | OK (already single-value semantics) |
 | `sqlex.AsList([]int{})` | Error `sqlex.AsList: empty slice` (expanding to nothing is meaningless) |
 
+#### Named parameter name rules & lexical context
+
+Named parameter `:name` rule: `[A-Za-z_][A-Za-z0-9_.]*` (letter/underscore start, digits/underscore/dot allowed; dots for nested fields like `:user.name`).
+
+| Pattern | Recognized? | Notes |
+|---|---|---|
+| `:name` / `:user_id` / `:arg1` | ✅ | Standard named parameter |
+| `:user.name` | ✅ | Dot-nested field |
+| `:123` / `:1` | ❌ preserved as literal | Digit-start rejected (avoids Oracle `:N` / SQLite `?NNN` conflicts) |
+| `:名字` (Unicode) | ❌ preserved as literal | ASCII-only param names (matches `db` tag / map key convention) |
+| `::int` (PG type cast) | ❌ preserved as literal | `::` recognized as type cast, not parameter |
+| `:=` (assignment) | ❌ preserved as literal | Output as-is |
+
+**Lexical scanning**: `:name` / `?` inside these regions are skipped (shared `lexer.go` scanner):
+- Single-quoted strings `'...'` (with `''` escapes), double-quoted identifiers `"..."`, backtick identifiers `` `...` ``
+- Dollar-quoted strings `$$...$$` / `$tag$...$tag$`
+- Line comments `-- ...`, block comments `/* ... */`
+
+> If edge cases trigger a misparse, `compileNamedQuery` preserves unmatched `:name` as literals (same behavior as GORM's `@name` handling), allowing the original SQL to still execute correctly.
+
 ### Prepared Statements
 
 ```go
@@ -296,9 +324,18 @@ stmt, err := db.Preparex("SELECT * FROM users WHERE name = ?")
 var user User
 err = stmt.Get(&user, "Alice")
 
+// PreparexContext — context-aware version
+ctx := context.Background()
+stmt, err = db.PreparexContext(ctx, "SELECT * FROM users WHERE name = ?")
+
 // PrepareNamed — named prepared statement
 nstmt, err := db.PrepareNamed("SELECT * FROM users WHERE name = :name")
 err = nstmt.Get(&user, map[string]any{"name": "Alice"})
+
+// PreparerContext — write generic prepare functions accepting DB/Tx/Conn
+func prepareQuery(p sqlex.PreparerContext) (*sqlex.Stmt, error) {
+    return sqlex.PreparexContext(context.Background(), p, "SELECT * FROM users WHERE name = ?")
+}
 ```
 
 ### Transaction Management
@@ -351,6 +388,14 @@ db.NamedExec(`INSERT INTO articles (title, metadata) VALUES (:title, :metadata)`
 // Read — auto-deserializes
 var a Article
 db.Get(&a, "SELECT * FROM articles WHERE id = ?", 1)
+if a.Metadata.Valid {
+    fmt.Println(a.Metadata.Val.Tags) // ["go", "sql"]
+}
+// ValueOrZero returns zero value if !Valid
+meta := a.Metadata.ValueOrZero()
+// Marshal/Unmarshal (implements json.Marshaler/Unmarshaler)
+data, _ := json.Marshal(a.Metadata)
+json.Unmarshal(data, &a.Metadata)
 ```
 
 ### Hook Aspects
