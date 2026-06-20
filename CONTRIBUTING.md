@@ -24,7 +24,7 @@ Thank you for your interest in contributing to sqlex! We welcome contributions f
 ### Code Style
 
 - Follow standard Go conventions ([Effective Go](https://go.dev/doc/effective_go))
-- Run `gofmt` and `goimports` before committing
+- Run `gofmt -d .` before committing
 - Doc comments should be in English
 - Keep line width ≤ 180 columns
 
