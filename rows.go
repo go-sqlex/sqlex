@@ -12,7 +12,7 @@ import (
 // during a looped StructScan
 type Rows struct {
 	*sql.Rows
-	Mapper     *reflectx.Mapper
+	Mapper *reflectx.Mapper
 	strict bool
 	// these fields cache memory use for a rows during iteration w/ structScan
 	started bool

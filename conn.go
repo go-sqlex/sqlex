@@ -13,7 +13,7 @@ type Conn struct {
 	driverName string
 	Mapper     *reflectx.Mapper
 	hooks      []Hook
-	strict bool
+	strict     bool
 }
 
 // DriverName returns the driverName used by the DB which created this Conn.

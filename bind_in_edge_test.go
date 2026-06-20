@@ -710,7 +710,7 @@ func TestAutoIn_AsValueAsList_EscapeHooks(t *testing.T) {
 		// Use AsValue for 1st, AsList to force expand 2nd/3rd
 		query := `INSERT INTO t (tags, ids, others) VALUES (?, ?, ?)`
 		gotQ, gotArgs, err := autoIn(query,
-			AsValue([]int{1, 2}),  // 1st ? not IN(?) + AsValue -> no expand
+			AsValue([]int{1, 2}),   // 1st ? not IN(?) + AsValue -> no expand
 			AsList([]int{3, 4, 5}), // 2nd ? not IN(?) + AsList -> force expand
 			AsList([]int{6, 7}),    // 3rd ? not IN(?) + AsList -> force expand
 		)

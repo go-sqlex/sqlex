@@ -10,10 +10,10 @@ import (
 	"strings"
 	"testing"
 
-	_ "github.com/go-sql-driver/mysql"    // register mysql driver
-	_ "github.com/lib/pq"                 // register postgres driver
-	_ "github.com/mattn/go-sqlite3"       // register sqlite3 driver
-	_ "github.com/microsoft/go-mssqldb"   // register sqlserver driver
+	_ "github.com/go-sql-driver/mysql"  // register mysql driver
+	_ "github.com/lib/pq"               // register postgres driver
+	_ "github.com/mattn/go-sqlite3"     // register sqlite3 driver
+	_ "github.com/microsoft/go-mssqldb" // register sqlserver driver
 
 	sqlex "github.com/go-sqlex/sqlex"
 	"github.com/go-sqlex/sqlex/testutil"

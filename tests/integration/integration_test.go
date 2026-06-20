@@ -1295,9 +1295,9 @@ func TestIntegrationMapperFunc(t *testing.T) {
 			dbCopy := sqlex.NewDb(db.DB, db.DriverName())
 			dbCopy.MapperFunc(strings.ToUpper)
 
-		// With an uppercase mapper, struct fields need uppercase db tags to match.
-		// This test verifies: original db is unaffected by dbCopy's mapper change.
-		var user IntUser
+			// With an uppercase mapper, struct fields need uppercase db tags to match.
+			// This test verifies: original db is unaffected by dbCopy's mapper change.
+			var user IntUser
 			err := db.Get(&user, "SELECT * FROM int_users WHERE name = ?", "Charlie")
 			if err != nil {
 				t.Fatalf("Original db should not be affected by dbCopy: %v", err)

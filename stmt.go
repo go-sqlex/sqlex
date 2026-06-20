@@ -10,9 +10,9 @@ import (
 // Stmt is an sqlex wrapper around sql.Stmt with extra functionality
 type Stmt struct {
 	*sql.Stmt
-	Mapper     *reflectx.Mapper
-	hooks      []Hook
-	query      string // Original SQL at prepare time, used for Hook event reporting
+	Mapper *reflectx.Mapper
+	hooks  []Hook
+	query  string // Original SQL at prepare time, used for Hook event reporting
 	strict bool
 }
 

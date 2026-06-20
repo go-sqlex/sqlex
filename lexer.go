@@ -99,7 +99,7 @@ func scanBracketIdentifier(query string, start int) int {
 }
 
 // scanQuoted scans a region delimited by the quote character (single/double/backtick quotes),
-// supporting the SQL-standard escape of two consecutive quotes representing a literal quote ('' / "" / ``).
+// supporting the SQL-standard escape of two consecutive quotes representing a literal quote (” / "" / “).
 // start points to the opening quote. Returns the position after the closing quote (exclusive).
 // If unclosed, returns len(query) (delegated to the driver for error reporting; this scanner
 // does not perform SQL validation).

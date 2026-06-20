@@ -17,7 +17,7 @@ type Tx struct {
 	driverName string
 	Mapper     *reflectx.Mapper
 	hooks      []Hook
-	strict bool
+	strict     bool
 }
 
 // DriverName returns the driverName used by the DB which began this transaction.
@@ -191,7 +191,7 @@ func (tx *Tx) NamedStmt(stmt *NamedStmt) *NamedStmt {
 		QueryString: stmt.QueryString,
 		Params:      stmt.Params,
 		Stmt:        tx.Stmtx(stmt.Stmt),
-		strict:  tx.strict,
+		strict:      tx.strict,
 	}
 }
 
@@ -202,7 +202,7 @@ func (tx *Tx) NamedStmtContext(ctx context.Context, stmt *NamedStmt) *NamedStmt 
 		QueryString: stmt.QueryString,
 		Params:      stmt.Params,
 		Stmt:        tx.StmtxContext(ctx, stmt.Stmt),
-		strict:  tx.strict,
+		strict:      tx.strict,
 	}
 }
 

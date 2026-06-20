@@ -156,7 +156,5 @@ func TestConcurrentHook(t *testing.T) {
 	})
 }
 
-
-
 // 抑制 unused import
 var _ = fmt.Sprintf

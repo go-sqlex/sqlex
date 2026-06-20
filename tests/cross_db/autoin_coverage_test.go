@@ -532,11 +532,11 @@ func TestCrossDB_BindExt_Contract_ExecAutoIN(t *testing.T) {
 
 		for _, c := range contractCases {
 			t.Run(c.name, func(t *testing.T) {
-			// Each case independently prepares data to avoid mutual interference
-			multiExec(db, crossSchema.Drop)
-			create, _, _ := schemaForDB(db, crossSchema)
-			multiExec(db, create)
-			seedCrossData(db, t)
+				// Each case independently prepares data to avoid mutual interference
+				multiExec(db, crossSchema.Drop)
+				create, _, _ := schemaForDB(db, crossSchema)
+				multiExec(db, create)
+				seedCrossData(db, t)
 
 				ext, cleanup := c.factory(t)
 				defer cleanup()
@@ -560,10 +560,10 @@ func TestCrossDB_BindExt_Contract_ExecAutoIN(t *testing.T) {
 				}
 				rows.Close()
 
-			// Contract 3: QueryRowx supports IN slice expansion (error stuffed into Row.err)
-			q := selectTop1(db, "SELECT name FROM cross_users WHERE name IN (?) LIMIT 1")
-			row := ext.QueryRowx(q,
-				[]string{"Alice"})
+				// Contract 3: QueryRowx supports IN slice expansion (error stuffed into Row.err)
+				q := selectTop1(db, "SELECT name FROM cross_users WHERE name IN (?) LIMIT 1")
+				row := ext.QueryRowx(q,
+					[]string{"Alice"})
 				var name string
 				if err := row.Scan(&name); err != nil {
 					t.Fatalf("[%s/%s] QueryRowx autoIN contract failed: %v",

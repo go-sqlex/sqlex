@@ -13,9 +13,9 @@ import (
 // Row is a reimplementation of sql.Row in order to gain access to the underlying
 // sql.Rows.Columns() data, necessary for StructScan.
 type Row struct {
-	err        error
-	rows       *sql.Rows
-	Mapper     *reflectx.Mapper
+	err    error
+	rows   *sql.Rows
+	Mapper *reflectx.Mapper
 	strict bool
 }
 

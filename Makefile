@@ -7,7 +7,6 @@ BASE_PACKAGE := github.com/go-sqlex/sqlex
 tooling:
 	go install honnef.co/go/tools/cmd/staticcheck@v0.7.0
 	go install golang.org/x/vuln/cmd/govulncheck@v1.1.3
-	go install golang.org/x/tools/cmd/goimports@v0.24.0
 
 has-changes:
 	git diff --exit-code --quiet HEAD --
@@ -19,7 +18,7 @@ lint:
 	$(GOPATH_BIN)/staticcheck -checks=all ./...
 
 fmt:
-	go list -f '{{.Dir}}' ./... | xargs -I {} goimports -local $(BASE_PACKAGE) -w {}
+	gofmt -d . | tee /dev/stderr | grep -q . && exit 1 || true
 
 vuln-check:
 	govulncheck ./...

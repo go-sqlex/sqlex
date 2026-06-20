@@ -32,8 +32,8 @@ type CrossJSONMetadata struct {
 
 // CrossJSONRow test row struct
 type CrossJSONRow struct {
-	ID       int                                  `db:"id"`
-	Name     string                               `db:"name"`
+	ID       int                                `db:"id"`
+	Name     string                             `db:"name"`
 	Metadata types.JSONValue[CrossJSONMetadata] `db:"metadata"`
 }
 
