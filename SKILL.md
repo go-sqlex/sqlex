@@ -1,13 +1,13 @@
 ---
 name: sqlex
 description: sqlex is a modern enhancement wrapper for Go database/sql based on jmoiron/sqlx,
-  providing struct scanning, named parameter queries, Hook aspects, generic JsonValue[T]
+  providing struct scanning, named parameter queries, Hook aspects, generic JSONValue[T]
   JSON column type, automatic IN expansion, cross-database unified `?` placeholder, and more.
   Use this skill whenever the user is involved in any of the following scenarios: sqlex library
   usage, development, debugging, migration, or bug fixes; Go database operations
   (Get/Select/Exec/Queryx), SQL query result mapping to structs (StructScan/MapScan/SliceScan),
   NamedGet/NamedSelect/NamedExec named parameter queries, IN clause expansion,
-  database Hook/interceptor/middleware/SQL aspects, JsonValue JSON column type,
+  database Hook/interceptor/middleware/SQL aspects, JSONValue JSON column type,
   transaction management CloseWithErr/ExecFunc, NamedExt/BindExt unified interfaces,
   Rebind placeholder conversion, migration from jmoiron/sqlx,
   PostgreSQL/MySQL/SQLite/SQL Server cross-database compatibility, Preparex prepared statements,
@@ -54,7 +54,7 @@ Need prepared statements?
 
 Need single connection? → db.Connx(ctx) → conn (aligned with DB/Tx interface)
 
-Need JSON column? → types.JsonValue[T] (generic, replaces JSONText)
+Need JSON column? → types.JSONValue[T] (generic, replaces JSONText)
 ```
 
 ## 3. Usage Essentials
@@ -130,16 +130,16 @@ conn.Get(&user, "SELECT * FROM users WHERE id = ?", 1)
 conn.NamedGet(&user, `SELECT * FROM users WHERE name = :name`, map[string]any{"name": "Alice"})
 ```
 
-### 3.6 JsonValue[T]
+### 3.6 JSONValue[T]
 
 ```go
 import "github.com/go-sqlex/sqlex/types"
 
 type Config struct {
     ID       int                       `db:"id"`
-    Settings types.JsonValue[Settings] `db:"settings"`
+    Settings types.JSONValue[Settings] `db:"settings"`
 }
-cfg := Config{Settings: types.NewJsonValue(Settings{Theme: "dark", FontSize: 14})}
+cfg := Config{Settings: types.NewJSONValue(Settings{Theme: "dark", FontSize: 14})}
 if cfg.Settings.Valid {
     theme := cfg.Settings.Val.Theme // "dark"
 }
@@ -190,7 +190,7 @@ db.AddHook(&MetricsHook{})
 | Feature | Description |
 |---------|-------------|
 | Hook aspects | `AddHook` pluggable SQL interceptors (onion model) |
-| JsonValue[T] | Generic JSON column type |
+| JSONValue[T] | Generic JSON column type |
 | NamedGet/NamedSelect | Convenient named parameter queries (built-in IN expansion) |
 | CloseWithErr | Auto Commit/Rollback based on error |
 | ExecFunc | Tx mutex-protected function execution |
@@ -250,7 +250,7 @@ db.AddHook(&MetricsHook{})
 
 | Type | Description |
 |------|-------------|
-| `JsonValue[T]` | Generic JSON column (Scan/Value + MarshalJSON/UnmarshalJSON; Val/Valid direct access) |
+| `JSONValue[T]` | Generic JSON column (Scan/Value + MarshalJSON/UnmarshalJSON; Val/Valid direct access) |
 | `JSONText` | json.RawMessage wrapper, supports Scan/Value |
 | `NullJSONText` | Nullable JSONText |
 | `GzippedText` | Auto gzip compress/decompress []byte |

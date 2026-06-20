@@ -5,20 +5,20 @@ import (
 	"encoding/json"
 )
 
-// JsonValue is a generic JSON column type that maps database JSON fields directly to Go strongly-typed structs.
+// JSONValue is a generic JSON column type that maps database JSON fields directly to Go strongly-typed structs.
 // T can be any JSON-serializable type (struct, slice, map, pointer, etc.).
-type JsonValue[T any] struct {
+type JSONValue[T any] struct {
 	Val   T
 	Valid bool
 }
 
-// NewJsonValue creates a valid JsonValue.
-func NewJsonValue[T any](val T) JsonValue[T] {
-	return JsonValue[T]{Val: val, Valid: true}
+// NewJSONValue creates a valid JSONValue.
+func NewJSONValue[T any](val T) JSONValue[T] {
+	return JSONValue[T]{Val: val, Valid: true}
 }
 
 // Scan implements the sql.Scanner interface.
-func (j *JsonValue[T]) Scan(src any) error {
+func (j *JSONValue[T]) Scan(src any) error {
 	if src == nil {
 		j.Valid = false
 		var zero T
@@ -46,7 +46,7 @@ func (j *JsonValue[T]) Scan(src any) error {
 }
 
 // Value implements the driver.Valuer interface.
-func (j JsonValue[T]) Value() (driver.Value, error) {
+func (j JSONValue[T]) Value() (driver.Value, error) {
 	if !j.Valid {
 		return nil, nil
 	}
@@ -58,7 +58,7 @@ func (j JsonValue[T]) Value() (driver.Value, error) {
 }
 
 // MarshalJSON implements the json.Marshaler interface.
-func (j JsonValue[T]) MarshalJSON() ([]byte, error) {
+func (j JSONValue[T]) MarshalJSON() ([]byte, error) {
 	if !j.Valid {
 		return []byte("null"), nil
 	}
@@ -66,7 +66,7 @@ func (j JsonValue[T]) MarshalJSON() ([]byte, error) {
 }
 
 // UnmarshalJSON implements the json.Unmarshaler interface.
-func (j *JsonValue[T]) UnmarshalJSON(data []byte) error {
+func (j *JSONValue[T]) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" || len(data) == 0 {
 		j.Valid = false
 		var zero T

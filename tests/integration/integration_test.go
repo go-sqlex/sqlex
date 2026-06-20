@@ -1136,7 +1136,7 @@ func TestIntegrationConn(t *testing.T) {
 }
 
 // ========================================================
-// 7. JsonValue[T] integration tests
+// 7. JSONValue[T] integration tests
 // ========================================================
 
 // jsonValueSchema 定义包含 JSON 列的测试表
@@ -1153,11 +1153,11 @@ DROP TABLE IF EXISTS json_test;
 `,
 }
 
-// JSONTestRow 用于 JsonValue 集成测试的行结构
+// JSONTestRow 用于 JSONValue 集成测试的行结构
 type JSONTestRow struct {
 	ID       int                    `db:"id"`
 	Name     string                 `db:"name"`
-	Metadata types.JsonValue[Attrs] `db:"metadata"`
+	Metadata types.JSONValue[Attrs] `db:"metadata"`
 }
 
 // Attrs 是 JSON 列的内部结构
@@ -1166,31 +1166,31 @@ type Attrs struct {
 	Level int    `json:"level"`
 }
 
-// TestIntegrationJsonValue 验证 JsonValue[T] 与真实数据库的完整交互：
+// TestIntegrationJSONValue 验证 JSONValue[T] 与真实数据库的完整交互：
 // 包括写入、读取、NULL 处理、更新等场景。
-func TestIntegrationJsonValue(t *testing.T) {
+func TestIntegrationJSONValue(t *testing.T) {
 	runWithSchema(jsonValueSchema, t, func(db *sqlex.DB, t *testing.T, now string) {
 		// 1. 写入有效的 JSON 值
-		meta := types.NewJsonValue(Attrs{Role: "admin", Level: 5})
+		meta := types.NewJSONValue(Attrs{Role: "admin", Level: 5})
 		_, err := db.Exec("INSERT INTO json_test (name, metadata) VALUES (?, ?)",
 			"alice", meta)
 		if err != nil {
-			t.Fatalf("insert with JsonValue failed: %v", err)
+			t.Fatalf("insert with JSONValue failed: %v", err)
 		}
 
 		// 2. 写入 NULL JSON 值
-		var nullMeta types.JsonValue[Attrs]
+		var nullMeta types.JSONValue[Attrs]
 		_, err = db.Exec("INSERT INTO json_test (name, metadata) VALUES (?, ?)",
 			"bob", nullMeta)
 		if err != nil {
-			t.Fatalf("insert with null JsonValue failed: %v", err)
+			t.Fatalf("insert with null JSONValue failed: %v", err)
 		}
 
 		// 3. 读取有效的 JSON 值
 		var row JSONTestRow
 		err = db.Get(&row, "SELECT * FROM json_test WHERE name = ?", "alice")
 		if err != nil {
-			t.Fatalf("Get JsonValue row failed: %v", err)
+			t.Fatalf("Get JSONValue row failed: %v", err)
 		}
 		if !row.Metadata.Valid {
 			t.Error("expected Metadata.Valid=true for alice")
@@ -1206,25 +1206,25 @@ func TestIntegrationJsonValue(t *testing.T) {
 		var nullRow JSONTestRow
 		err = db.Get(&nullRow, "SELECT * FROM json_test WHERE name = ?", "bob")
 		if err != nil {
-			t.Fatalf("Get null JsonValue row failed: %v", err)
+			t.Fatalf("Get null JSONValue row failed: %v", err)
 		}
 		if nullRow.Metadata.Valid {
 			t.Error("expected Metadata.Valid=false for bob (NULL)")
 		}
 
 		// 5. 使用 NamedExec 更新 JSON 值
-		updated := types.NewJsonValue(Attrs{Role: "user", Level: 2})
+		updated := types.NewJSONValue(Attrs{Role: "user", Level: 2})
 		_, err = db.NamedExec("UPDATE json_test SET metadata = :metadata WHERE name = :name",
 			map[string]any{"name": "bob", "metadata": updated})
 		if err != nil {
-			t.Fatalf("NamedExec update JsonValue failed: %v", err)
+			t.Fatalf("NamedExec update JSONValue failed: %v", err)
 		}
 
 		// 6. 验证更新结果
 		var updatedRow JSONTestRow
 		err = db.Get(&updatedRow, "SELECT * FROM json_test WHERE name = ?", "bob")
 		if err != nil {
-			t.Fatalf("Get updated JsonValue row failed: %v", err)
+			t.Fatalf("Get updated JSONValue row failed: %v", err)
 		}
 		if !updatedRow.Metadata.Valid {
 			t.Error("expected Metadata.Valid=true after update")
@@ -1238,7 +1238,7 @@ func TestIntegrationJsonValue(t *testing.T) {
 		var rows []JSONTestRow
 		err = db.Select(&rows, "SELECT * FROM json_test ORDER BY id")
 		if err != nil {
-			t.Fatalf("Select JsonValue rows failed: %v", err)
+			t.Fatalf("Select JSONValue rows failed: %v", err)
 		}
 		if len(rows) != 2 {
 			t.Fatalf("expected 2 rows, got %d", len(rows))

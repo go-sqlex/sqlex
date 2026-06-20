@@ -3,7 +3,7 @@
 // Coverage:
 //  1. Database connectivity (Ping, connection close)
 //  2. Standard CRUD, transactions, prepared statements, connection pool
-//  3. New features: Hook system, JsonValue[T], Named queries, Context control
+//  3. New features: Hook system, JSONValue[T], Named queries, Context control
 //  4. PostgreSQL-specific: JSON/JSONB, arrays, :: type casts, $N placeholders
 //  5. Edge cases: nulls, type conversion errors, connection timeout, concurrency
 //
@@ -585,8 +585,8 @@ func (h *funcHook) AfterQuery(ctx context.Context, event *sqlex.QueryEvent) {
 	h.after(ctx, event)
 }
 
-// TestPGJsonValue tests JsonValue[T] mapping with PostgreSQL JSON columns
-func TestPGJsonValue(t *testing.T) {
+// TestPGJSONValue tests JSONValue[T] mapping with PostgreSQL JSON columns
+func TestPGJSONValue(t *testing.T) {
 	pgOnly(t)
 
 	jsonSchema := Schema{
@@ -620,17 +620,17 @@ CREATE TABLE pg_json_test (
 	type JSONRow struct {
 		ID       int                       `db:"id"`
 		Name     string                    `db:"name"`
-		Metadata types.JsonValue[Metadata] `db:"metadata"`
-		Settings types.JsonValue[Settings] `db:"settings"`
-		Tags     types.JsonValue[[]string] `db:"tags"`
+		Metadata types.JSONValue[Metadata] `db:"metadata"`
+		Settings types.JSONValue[Settings] `db:"settings"`
+		Tags     types.JSONValue[[]string] `db:"tags"`
 	}
 
 	t.Run("Insert_And_Read_JSON", func(t *testing.T) {
 		row := JSONRow{
 			Name:     "test1",
-			Metadata: types.NewJsonValue(Metadata{Version: "1.0", Author: "Alice"}),
-			Settings: types.NewJsonValue(Settings{Theme: "dark", FontSize: 14, Debug: true}),
-			Tags:     types.NewJsonValue([]string{"go", "postgres", "json"}),
+			Metadata: types.NewJSONValue(Metadata{Version: "1.0", Author: "Alice"}),
+			Settings: types.NewJSONValue(Settings{Theme: "dark", FontSize: 14, Debug: true}),
+			Tags:     types.NewJSONValue([]string{"go", "postgres", "json"}),
 		}
 
 		_, err := pgdb.NamedExec(`INSERT INTO pg_json_test (name, metadata, settings, tags) 
@@ -690,8 +690,8 @@ CREATE TABLE pg_json_test (
 		}
 	})
 
-	t.Run("JsonValue_MarshalJSON", func(t *testing.T) {
-		jv := types.NewJsonValue(Metadata{Version: "2.0", Author: "Bob"})
+	t.Run("JSONValue_MarshalJSON", func(t *testing.T) {
+		jv := types.NewJSONValue(Metadata{Version: "2.0", Author: "Bob"})
 		data, err := json.Marshal(jv)
 		if err != nil {
 			t.Fatalf("MarshalJSON failed: %v", err)
@@ -702,7 +702,7 @@ CREATE TABLE pg_json_test (
 		}
 
 		// Test invalid value serialization
-		var invalid types.JsonValue[Metadata]
+		var invalid types.JSONValue[Metadata]
 		data, err = json.Marshal(invalid)
 		if err != nil {
 			t.Fatalf("MarshalJSON for invalid failed: %v", err)
@@ -712,12 +712,12 @@ CREATE TABLE pg_json_test (
 		}
 	})
 
-	t.Run("JsonValue_Map", func(t *testing.T) {
-		// Test JsonValue with map type
+	t.Run("JSONValue_Map", func(t *testing.T) {
+		// Test JSONValue with map type
 		type MapRow struct {
 			ID       int                             `db:"id"`
 			Name     string                          `db:"name"`
-			Settings types.JsonValue[map[string]any] `db:"settings"`
+			Settings types.JSONValue[map[string]any] `db:"settings"`
 		}
 
 		_, err := pgdb.Exec(`INSERT INTO pg_json_test (name, settings) VALUES (?, ?)`,

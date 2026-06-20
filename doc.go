@@ -7,7 +7,7 @@
 // # Core Enhancements
 //
 //   - Hook aspects: onion-model SQL interceptors supporting logging, monitoring, and tracing
-//   - JsonValue[T]: generic JSON column type, NULL-safe
+//   - JSONValue[T]: generic JSON column type, NULL-safe
 //   - Auto Rebind: all query methods use ? placeholders uniformly, auto-converting to target database format
 //   - Transparent IN: Select/Get/NamedGet/NamedSelect auto-expand slice parameters
 //   - StrictMode: optional strict mode detecting query result / struct field mismatches

@@ -1,4 +1,4 @@
-// json_test.go — cross-database integration tests for JsonValue[T] type
+// json_test.go — cross-database integration tests for JSONValue[T] type
 package cross_db_test
 
 import (
@@ -34,32 +34,32 @@ type CrossJSONMetadata struct {
 type CrossJSONRow struct {
 	ID       int                                  `db:"id"`
 	Name     string                               `db:"name"`
-	Metadata types.JsonValue[CrossJSONMetadata] `db:"metadata"`
+	Metadata types.JSONValue[CrossJSONMetadata] `db:"metadata"`
 }
 
 // ========================================================
-// TestCrossDBJsonValueCRUD — 验证 JsonValue[T] 的写入、读取、更新
+// TestCrossDBJSONValueCRUD — 验证 JSONValue[T] 的写入、读取、更新
 // ========================================================
-func TestCrossDBJsonValueCRUD(t *testing.T) {
+func TestCrossDBJSONValueCRUD(t *testing.T) {
 	runWithSchema(crossJSONSchema, t, func(db *sqlex.DB, t *testing.T, now string) {
 		crossDBOnly(t)
 
 		ctx := context.Background()
 
 		// 写入
-		meta := types.NewJsonValue(CrossJSONMetadata{Version: "1.0", Author: "Alice"})
+		meta := types.NewJSONValue(CrossJSONMetadata{Version: "1.0", Author: "Alice"})
 		_, err := db.ExecContext(ctx,
 			"INSERT INTO cross_json_test (name, metadata) VALUES (?, ?)",
 			"test1", meta)
 		if err != nil {
-			t.Fatalf("[%s] Insert JsonValue failed: %v", dbLabel(db), err)
+			t.Fatalf("[%s] Insert JSONValue failed: %v", dbLabel(db), err)
 		}
 
 		// 读取
 		var row CrossJSONRow
 		err = db.GetContext(ctx, &row, "SELECT * FROM cross_json_test WHERE name = ?", "test1")
 		if err != nil {
-			t.Fatalf("[%s] Get JsonValue failed: %v", dbLabel(db), err)
+			t.Fatalf("[%s] Get JSONValue failed: %v", dbLabel(db), err)
 		}
 		if !row.Metadata.Valid {
 			t.Fatalf("[%s] expected Metadata.Valid = true", dbLabel(db))
@@ -69,18 +69,18 @@ func TestCrossDBJsonValueCRUD(t *testing.T) {
 		}
 
 		// 更新
-		newMeta := types.NewJsonValue(CrossJSONMetadata{Version: "2.0", Author: "Bob"})
+		newMeta := types.NewJSONValue(CrossJSONMetadata{Version: "2.0", Author: "Bob"})
 		_, err = db.ExecContext(ctx,
 			"UPDATE cross_json_test SET metadata = ? WHERE name = ?",
 			newMeta, "test1")
 		if err != nil {
-			t.Fatalf("[%s] Update JsonValue failed: %v", dbLabel(db), err)
+			t.Fatalf("[%s] Update JSONValue failed: %v", dbLabel(db), err)
 		}
 
 		// 验证更新
 		err = db.GetContext(ctx, &row, "SELECT * FROM cross_json_test WHERE name = ?", "test1")
 		if err != nil {
-			t.Fatalf("[%s] Get updated JsonValue failed: %v", dbLabel(db), err)
+			t.Fatalf("[%s] Get updated JSONValue failed: %v", dbLabel(db), err)
 		}
 		if row.Metadata.Val.Version != "2.0" || row.Metadata.Val.Author != "Bob" {
 			t.Errorf("[%s] unexpected updated metadata: %+v", dbLabel(db), row.Metadata.Val)
@@ -89,9 +89,9 @@ func TestCrossDBJsonValueCRUD(t *testing.T) {
 }
 
 // ========================================================
-// TestCrossDBJsonValueNull — 验证 NULL 值时 JsonValue.Valid 为 false
+// TestCrossDBJSONValueNull — 验证 NULL 值时 JSONValue.Valid 为 false
 // ========================================================
-func TestCrossDBJsonValueNull(t *testing.T) {
+func TestCrossDBJSONValueNull(t *testing.T) {
 	runWithSchema(crossJSONSchema, t, func(db *sqlex.DB, t *testing.T, now string) {
 		crossDBOnly(t)
 
@@ -116,16 +116,16 @@ func TestCrossDBJsonValueNull(t *testing.T) {
 }
 
 // ========================================================
-// TestCrossDBJsonValueZeroVal — verify Val is zero when !Valid
+// TestCrossDBJSONValueZeroVal — verify Val is zero when !Valid
 // ========================================================
-func TestCrossDBJsonValueZeroVal(t *testing.T) {
+func TestCrossDBJSONValueZeroVal(t *testing.T) {
 	runWithSchema(crossJSONSchema, t, func(db *sqlex.DB, t *testing.T, now string) {
 		crossDBOnly(t)
 
 		ctx := context.Background()
 
 		// 插入有效值和 NULL 值
-		meta := types.NewJsonValue(CrossJSONMetadata{Version: "3.0", Author: "Charlie"})
+		meta := types.NewJSONValue(CrossJSONMetadata{Version: "3.0", Author: "Charlie"})
 		db.ExecContext(ctx, "INSERT INTO cross_json_test (name, metadata) VALUES (?, ?)", "valid", meta)
 		db.ExecContext(ctx, "INSERT INTO cross_json_test (name, metadata) VALUES (?, NULL)", "null_val")
 

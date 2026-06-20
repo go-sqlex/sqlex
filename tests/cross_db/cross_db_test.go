@@ -197,5 +197,5 @@ func (h *crossOrderHook) AfterQuery(ctx context.Context, event *sqlex.QueryEvent
 
 // Suppress unused import warnings
 var (
-	_ = types.NewJsonValue[int]
+	_ = types.NewJSONValue[int]
 )

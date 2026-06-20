@@ -10,8 +10,8 @@ type testAddr struct {
 	Street string `json:"street"`
 }
 
-func TestJsonValue_ScanNull(t *testing.T) {
-	var jv JsonValue[testAddr]
+func TestJSONValue_ScanNull(t *testing.T) {
+	var jv JSONValue[testAddr]
 	if err := jv.Scan(nil); err != nil {
 		t.Fatal(err)
 	}
@@ -20,8 +20,8 @@ func TestJsonValue_ScanNull(t *testing.T) {
 	}
 }
 
-func TestJsonValue_ScanBytes(t *testing.T) {
-	var jv JsonValue[testAddr]
+func TestJSONValue_ScanBytes(t *testing.T) {
+	var jv JSONValue[testAddr]
 	if err := jv.Scan([]byte(`{"city":"Beijing","street":"ChangAn"}`)); err != nil {
 		t.Fatal(err)
 	}
@@ -33,8 +33,8 @@ func TestJsonValue_ScanBytes(t *testing.T) {
 	}
 }
 
-func TestJsonValue_ScanString(t *testing.T) {
-	var jv JsonValue[map[string]int]
+func TestJSONValue_ScanString(t *testing.T) {
+	var jv JSONValue[map[string]int]
 	if err := jv.Scan(`{"a":1,"b":2}`); err != nil {
 		t.Fatal(err)
 	}
@@ -43,8 +43,8 @@ func TestJsonValue_ScanString(t *testing.T) {
 	}
 }
 
-func TestJsonValue_Value(t *testing.T) {
-	jv := NewJsonValue(testAddr{City: "Shanghai", Street: "NanJing"})
+func TestJSONValue_Value(t *testing.T) {
+	jv := NewJSONValue(testAddr{City: "Shanghai", Street: "NanJing"})
 	v, err := jv.Value()
 	if err != nil {
 		t.Fatal(err)
@@ -62,19 +62,19 @@ func TestJsonValue_Value(t *testing.T) {
 	}
 }
 
-func TestJsonValue_ValueNull(t *testing.T) {
-	var jv JsonValue[testAddr]
+func TestJSONValue_ValueNull(t *testing.T) {
+	var jv JSONValue[testAddr]
 	v, err := jv.Value()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if v != nil {
-		t.Error("expected nil for invalid JsonValue")
+		t.Error("expected nil for invalid JSONValue")
 	}
 }
 
-func TestJsonValue_MarshalJSON(t *testing.T) {
-	jv := NewJsonValue([]int{1, 2, 3})
+func TestJSONValue_MarshalJSON(t *testing.T) {
+	jv := NewJSONValue([]int{1, 2, 3})
 	data, err := json.Marshal(jv)
 	if err != nil {
 		t.Fatal(err)
@@ -84,8 +84,8 @@ func TestJsonValue_MarshalJSON(t *testing.T) {
 	}
 }
 
-func TestJsonValue_MarshalJSON_Null(t *testing.T) {
-	var jv JsonValue[testAddr]
+func TestJSONValue_MarshalJSON_Null(t *testing.T) {
+	var jv JSONValue[testAddr]
 	data, err := json.Marshal(jv)
 	if err != nil {
 		t.Fatal(err)
@@ -95,8 +95,8 @@ func TestJsonValue_MarshalJSON_Null(t *testing.T) {
 	}
 }
 
-func TestJsonValue_UnmarshalJSON(t *testing.T) {
-	var jv JsonValue[testAddr]
+func TestJSONValue_UnmarshalJSON(t *testing.T) {
+	var jv JSONValue[testAddr]
 	if err := json.Unmarshal([]byte(`{"city":"Hangzhou","street":"West Lake"}`), &jv); err != nil {
 		t.Fatal(err)
 	}
@@ -105,8 +105,8 @@ func TestJsonValue_UnmarshalJSON(t *testing.T) {
 	}
 }
 
-func TestJsonValue_UnmarshalJSON_Null(t *testing.T) {
-	jv := NewJsonValue(testAddr{City: "test"})
+func TestJSONValue_UnmarshalJSON_Null(t *testing.T) {
+	jv := NewJSONValue(testAddr{City: "test"})
 	if err := json.Unmarshal([]byte("null"), &jv); err != nil {
 		t.Fatal(err)
 	}
@@ -115,12 +115,12 @@ func TestJsonValue_UnmarshalJSON_Null(t *testing.T) {
 	}
 }
 
-func TestJsonValue_NestedStruct(t *testing.T) {
+func TestJSONValue_NestedStruct(t *testing.T) {
 	type Inner struct {
 		Items []testAddr `json:"items"`
 	}
 	data := `{"items":[{"city":"A","street":"1"},{"city":"B","street":"2"}]}`
-	var jv JsonValue[Inner]
+	var jv JSONValue[Inner]
 	if err := jv.Scan([]byte(data)); err != nil {
 		t.Fatal(err)
 	}

@@ -1,11 +1,11 @@
 ---
 name: sqlex
 description: sqlex 是基于 jmoiron/sqlx 的 Go database/sql 现代化增强封装库，提供结构体扫描、命名参数查询、
-  Hook 切面、泛型 JsonValue[T] JSON 列类型、自动 IN 展开、跨数据库统一 `?` 占位符等能力。
+  Hook 切面、泛型 JSONValue[T] JSON 列类型、自动 IN 展开、跨数据库统一 `?` 占位符等能力。
   当用户涉及以下任何场景时，务必使用此技能：sqlex 库的使用、开发、调试、迁移、Bug 修复，
   Go 数据库操作（Get/Select/Exec/Queryx），SQL 查询结果映射结构体（StructScan/MapScan/SliceScan），
   NamedGet/NamedSelect/NamedExec 命名参数查询，IN 子句展开，
-  数据库 Hook/拦截器/中间件/SQL 切面，JsonValue JSON 列类型，
+  数据库 Hook/拦截器/中间件/SQL 切面，JSONValue JSON 列类型，
   事务管理 CloseWithErr/ExecFunc，NamedExt/BindExt 统一接口，
   Rebind 占位符转换，从 jmoiron/sqlx 迁移，
   PostgreSQL/MySQL/SQLite/SQL Server 跨数据库兼容，Preparex 预编译语句，PrepareNamed 命名预编译，
@@ -51,7 +51,7 @@ description: sqlex 是基于 jmoiron/sqlx 的 Go database/sql 现代化增强封
 
 需要单连接？ → db.Connx(ctx) → conn（与 DB/Tx 接口对齐）
 
-需要 JSON 列？ → types.JsonValue[T]（泛型，替代 JSONText）
+需要 JSON 列？ → types.JSONValue[T]（泛型，替代 JSONText）
 ```
 
 ## 3. 用法精要
@@ -127,16 +127,16 @@ conn.Get(&user, "SELECT * FROM users WHERE id = ?", 1)
 conn.NamedGet(&user, `SELECT * FROM users WHERE name = :name`, map[string]any{"name": "Alice"})
 ```
 
-### 3.6 JsonValue[T]
+### 3.6 JSONValue[T]
 
 ```go
 import "github.com/go-sqlex/sqlex/types"
 
 type Config struct {
     ID       int                       `db:"id"`
-    Settings types.JsonValue[Settings] `db:"settings"`
+    Settings types.JSONValue[Settings] `db:"settings"`
 }
-cfg := Config{Settings: types.NewJsonValue(Settings{Theme: "dark", FontSize: 14})}
+cfg := Config{Settings: types.NewJSONValue(Settings{Theme: "dark", FontSize: 14})}
 if cfg.Settings.Valid {
     theme := cfg.Settings.Val.Theme // "dark"
 }
@@ -187,7 +187,7 @@ db.AddHook(&MetricsHook{})
 | 特性 | 说明 |
 |------|------|
 | Hook 切面 | `AddHook` 可插拔 SQL 执行拦截器（洋葱模型） |
-| JsonValue[T] | 泛型 JSON 列类型 |
+| JSONValue[T] | 泛型 JSON 列类型 |
 | NamedGet/NamedSelect | 便捷命名参数查询（内置 IN 展开） |
 | CloseWithErr | 根据 error 自动 Commit/Rollback |
 | ExecFunc | Tx 互斥锁保护下执行函数 |
@@ -247,7 +247,7 @@ db.AddHook(&MetricsHook{})
 
 | 类型 | 说明 |
 |------|------|
-| `JsonValue[T]` | 泛型 JSON 列（Scan/Value + MarshalJSON/UnmarshalJSON；直接访问 Val/Valid 字段） |
+| `JSONValue[T]` | 泛型 JSON 列（Scan/Value + MarshalJSON/UnmarshalJSON；直接访问 Val/Valid 字段） |
 | `JSONText` | json.RawMessage 包装，支持 Scan/Value |
 | `NullJSONText` | 可空的 JSONText |
 | `GzippedText` | 自动 gzip 压缩/解压的 []byte |

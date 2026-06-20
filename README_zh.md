@@ -18,7 +18,7 @@
 - 🎯 **统一接口** — `Ext` / `ExtContext` / `NamedExt` / `BindExt` / `Preparer` / `PreparerContext`，编译期校验。写 `func f(ext NamedExt)` 即可接受 DB、Tx 或 Conn。
 - 🔀 **IN 子句自动展开** — 切片参数在 `IN (?)` 中自动检测并展开，覆盖所有方法。
 - 🪝 **Hook 系统** — 可插拔 SQL 拦截器，用于日志、追踪、指标（洋葱模型）。
-- 📦 **JsonValue[T]** — 泛型 JSON 列类型，自动序列化/反序列化。
+- 📦 **JSONValue[T]** — 泛型 JSON 列类型，自动序列化/反序列化。
 - 🛡️ **StrictMode** — 默认宽松（与 sqlx `Unsafe()` 一致），可选开启严格模式辅助调试。
 
 → [迁移指南](#从-jmoironsqlx-迁移)
@@ -35,7 +35,7 @@
   - [IN 查询](#in-查询)
   - [预编译语句](#预编译语句)
   - [事务管理](#事务管理)
-  - [JsonValue[T]](#jsonvaluet)
+  - [JSONValue[T]](#jsonvaluet)
   - [Hook 切面](#hook-切面)
   - [StrictMode 严格模式](#strictmode-严格模式)
   - [NamedExt 统一接口](#统一接口)
@@ -149,7 +149,7 @@ sqlex 保留所有 sqlx API，并新增以下能力：
 | 功能 | 说明 |
 |------|------|
 | **Hook 切面** | `AddHook` — 可插拔 SQL 执行拦截器（洋葱模型） |
-| **JsonValue[T]** | `types.JsonValue[T]` — 泛型 JSON 列类型 |
+| **JSONValue[T]** | `types.JSONValue[T]` — 泛型 JSON 列类型 |
 | **NamedGet/NamedSelect** | DB/Tx 上的命名参数便捷查询方法（内置 IN 展开） |
 | **CloseWithErr** | 根据 error 自动 Commit/Rollback |
 | **统一接口** | `Ext` / `ExtContext` / `NamedExt` / `BindExt` / `Preparer` / `PreparerContext` — DB、Tx、Conn 共享完全一致的方法签名，编译期校验 |
@@ -396,7 +396,7 @@ tx, err := db.BeginTxx(ctx, &sql.TxOptions{
 })
 ```
 
-### JsonValue[T]
+### JSONValue[T]
 
 ```go
 import "github.com/go-sqlex/sqlex/types"
@@ -405,7 +405,7 @@ import "github.com/go-sqlex/sqlex/types"
 type Article struct {
     ID       int                            `db:"id"`
     Title    string                         `db:"title"`
-    Metadata types.JsonValue[ArticleMeta]   `db:"metadata"`
+    Metadata types.JSONValue[ArticleMeta]   `db:"metadata"`
 }
 
 type ArticleMeta struct {
@@ -416,7 +416,7 @@ type ArticleMeta struct {
 // 写入 — 自动序列化为 JSON
 article := Article{
     Title:    "Hello World",
-    Metadata: types.NewJsonValue(ArticleMeta{
+    Metadata: types.NewJSONValue(ArticleMeta{
         Tags:      []string{"go", "sql"},
         ViewCount: 0,
     }),
@@ -533,7 +533,7 @@ user, err = getUserByName(conn, "Charlie")
 | 跨数据库占位符 | ❌ 需手动 Rebind | ✅ **所有方法**自动 Rebind，统一用 `?`（包括 `Preparex`） |
 | 字段匹配模式 | `unsafe` 字段（默认严格） | `StrictMode`（默认宽松，语义更直观） |
 | Hook 切面 | ❌ | ✅ `AddHook` 可插拔 SQL 执行拦截器 |
-| JsonValue[T] | ❌ | ✅ `types.JsonValue[T]` |
+| JSONValue[T] | ❌ | ✅ `types.JSONValue[T]` |
 | NamedGet/NamedSelect | ❌ | ✅ DB/Tx 便捷方法（内置 IN 展开） |
 | CloseWithErr | ❌ | ✅ 自动事务管理 |
 | 统一接口 | ❌ DB/Tx 方法重叠但无共享接口 | ✅ `Ext` / `ExtContext` / `NamedExt` / `BindExt` / `Preparer` / `PreparerContext` — DB/Tx/Conn 统一，编译期校验 |
@@ -671,7 +671,7 @@ go test -bench=. -benchmem -run=NoSuch -benchtime=2s .
 | `tests/pg/` | **PostgreSQL 专用集成测试**（黑盒），覆盖 PG 特有功能（JSONB、数组、`::` 类型转换、窗口函数等） |
 | `tests/cross_db/` | **跨库集成测试**（黑盒），仅通过公开 API 验证 MySQL + PostgreSQL 兼容性 |
 | `reflectx/reflect_test.go` | reflectx 子包自有测试 |
-| `types/*_test.go` | types 子包自有测试（JsonValue、NullTypes） |
+| `types/*_test.go` | types 子包自有测试（JSONValue、NullTypes） |
 | `testutil/` | 测试环境工具包（环境变量加载、DSN 拼装） |
 
 ### 测试覆盖范围
@@ -684,7 +684,7 @@ go test -bench=. -benchmem -run=NoSuch -benchtime=2s .
 | **bindMap/bindStruct** | 正常绑定 + 容错处理（缺失参数保持 `:name`） |
 | **Hook 洋葱模型** | BeforeQuery 正序 + AfterQuery 反序 + 零 Hook 安全 + 单 Hook |
 | **compileNamedQueryWith 容错** | QUESTION/DOLLAR/AT 三种 bindType × 无缺失/部分缺失/全部缺失 + 字符串字面量/注释/dollar-quote 内 `:name` 不识别 |
-| **JsonValue[T]** | 单元测试（Scan/Value/MarshalJSON/UnmarshalJSON）+ 集成测试（真实数据库读写/NULL 处理） |
+| **JSONValue[T]** | 单元测试（Scan/Value/MarshalJSON/UnmarshalJSON）+ 集成测试（真实数据库读写/NULL 处理） |
 | **MapperFunc** | 默认映射、自定义映射、独立 DB 副本映射互不影响 |
 | **StrictMode** | 默认值验证、Set/Get 方法、严格/宽松模式行为、DB→Tx/Conn/Row/Rows 继承传递、NamedStmt/Stmt 继承、错误信息包含列名和索引 |
 | **Conn** | SelectContext/GetContext/ExecContext/QueryxContext/QueryRowxContext/NamedGetContext/NamedSelectContext/NamedExecContext |

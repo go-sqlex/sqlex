@@ -23,7 +23,7 @@ What you get for free after migrating:
 - 🎯 **Unified interfaces** — `Ext` / `ExtContext` / `NamedExt` / `BindExt` / `Preparer` / `PreparerContext` with compile-time checks. Write `func f(ext NamedExt)` and pass DB, Tx, or Conn.
 - 🔀 **Auto IN expansion** — slices in `IN (?)` detected and expanded automatically on all methods.
 - 🪝 **Hook system** — pluggable SQL interceptors for logging, tracing, metrics (onion model).
-- 📦 **JsonValue[T]** — generic JSON column type with auto serialize/deserialize.
+- 📦 **JSONValue[T]** — generic JSON column type with auto serialize/deserialize.
 - 🛡️ **StrictMode** — lenient by default (matching sqlx `Unsafe()`), optionally strict for debugging.
 
 → [Migration Guide](#migration-from-jmoironsqlx)
@@ -40,7 +40,7 @@ What you get for free after migrating:
   - [IN Queries](#in-queries)
   - [Prepared Statements](#prepared-statements)
   - [Transaction Management](#transaction-management)
-  - [JsonValue[T]](#jsonvaluet)
+  - [JSONValue[T]](#jsonvaluet)
   - [Hook Aspects](#hook-aspects)
   - [StrictMode](#strictmode)
   - [NamedExt / BindExt Unified Interfaces](#unified-interfaces)
@@ -153,7 +153,7 @@ sqlex preserves all sqlx APIs and adds the following capabilities:
 | Feature | Description |
 |---------|-------------|
 | **Hook aspects** | `AddHook` — pluggable SQL execution interceptors (onion model) |
-| **JsonValue[T]** | `types.JsonValue[T]` — generic JSON column type |
+| **JSONValue[T]** | `types.JSONValue[T]` — generic JSON column type |
 | **NamedGet/NamedSelect** | Named parameter convenience methods on DB/Tx (built-in IN expansion) |
 | **CloseWithErr** | Auto Commit/Rollback based on error |
 | **Unified interfaces** | `Ext` / `ExtContext` / `NamedExt` / `BindExt` / `Preparer` / `PreparerContext` — DB, Tx, and Conn share identical method signatures with compile-time checks |
@@ -359,7 +359,7 @@ func createUserWithProfile(db *sqlex.DB, user User, profile Profile) (err error)
 }
 ```
 
-### JsonValue[T]
+### JSONValue[T]
 
 ```go
 import "github.com/go-sqlex/sqlex/types"
@@ -367,7 +367,7 @@ import "github.com/go-sqlex/sqlex/types"
 type Article struct {
     ID       int                            `db:"id"`
     Title    string                         `db:"title"`
-    Metadata types.JsonValue[ArticleMeta]   `db:"metadata"`
+    Metadata types.JSONValue[ArticleMeta]   `db:"metadata"`
 }
 
 type ArticleMeta struct {
@@ -378,7 +378,7 @@ type ArticleMeta struct {
 // Write — auto-serializes to JSON
 article := Article{
     Title:    "Hello World",
-    Metadata: types.NewJsonValue(ArticleMeta{
+    Metadata: types.NewJSONValue(ArticleMeta{
         Tags:      []string{"go", "sql"},
         ViewCount: 0,
     }),
@@ -478,7 +478,7 @@ user, err = getUserByName(conn, "Charlie")
 | Cross-database placeholders | ❌ Manual Rebind | ✅ All methods auto-Rebind, use `?` uniformly (including `Preparex`) |
 | Field matching | `unsafe` (default strict) | `StrictMode` (default lenient, more intuitive) |
 | Hook aspects | ❌ | ✅ `AddHook` pluggable SQL interceptors |
-| JsonValue[T] | ❌ | ✅ `types.JsonValue[T]` |
+| JSONValue[T] | ❌ | ✅ `types.JSONValue[T]` |
 | NamedGet/NamedSelect | ❌ | ✅ DB/Tx convenience methods |
 | CloseWithErr | ❌ | ✅ Auto transaction management |
 | Unified interfaces | ❌ DB/Tx methods overlap but no shared interface | ✅ `Ext` / `ExtContext` / `NamedExt` / `BindExt` / `Preparer` / `PreparerContext` — DB/Tx/Conn unified with compile-time checks |
