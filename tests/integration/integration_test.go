@@ -1136,47 +1136,7 @@ func TestIntegrationConn(t *testing.T) {
 }
 
 // ========================================================
-// 7. ExecFunc 并发安全测试
-// ========================================================
-
-// TestIntegrationExecFunc 验证 Tx.ExecFunc 的互斥锁保护机制。
-// 多个 goroutine 通过 ExecFunc 并发更新同一行数据，结果应一致无 data race。
-func TestIntegrationExecFunc(t *testing.T) {
-	runWithSchema(integrationSchema, t, func(db *sqlex.DB, t *testing.T, now string) {
-		seedIntegrationData(db, t)
-
-		tx := db.MustBegin()
-		defer tx.Commit()
-
-		// 多个 goroutine 通过 ExecFunc 并发递增 age
-		const goroutines = 10
-		var wg sync.WaitGroup
-		wg.Add(goroutines)
-		for i := 0; i < goroutines; i++ {
-			go func() {
-				defer wg.Done()
-				tx.ExecFunc(func(tx *sqlex.Tx) {
-					tx.MustExec("UPDATE int_users SET age = age + 1 WHERE name = 'Alice'")
-				})
-			}()
-		}
-		wg.Wait()
-
-		// 验证最终 age = 初始值(30) + goroutines(10)
-		var user IntUser
-		err := tx.Get(&user, "SELECT * FROM int_users WHERE name = 'Alice'")
-		if err != nil {
-			t.Fatalf("Get after ExecFunc failed: %v", err)
-		}
-		expectedAge := 30 + goroutines
-		if user.Age != expectedAge {
-			t.Errorf("ExecFunc concurrent update: expected age %d, got %d", expectedAge, user.Age)
-		}
-	})
-}
-
-// ========================================================
-// 8. JsonValue[T] 与真实数据库的集成测试
+// 7. JsonValue[T] integration tests
 // ========================================================
 
 // jsonValueSchema 定义包含 JSON 列的测试表

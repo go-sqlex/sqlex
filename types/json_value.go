@@ -76,12 +76,3 @@ func (j *JsonValue[T]) UnmarshalJSON(data []byte) error {
 	j.Valid = true
 	return json.Unmarshal(data, &j.Val)
 }
-
-// ValueOrZero returns the value if valid, otherwise returns the zero value.
-func (j JsonValue[T]) ValueOrZero() T {
-	if j.Valid {
-		return j.Val
-	}
-	var zero T
-	return zero
-}

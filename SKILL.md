@@ -140,8 +140,10 @@ type Config struct {
     Settings types.JsonValue[Settings] `db:"settings"`
 }
 cfg := Config{Settings: types.NewJsonValue(Settings{Theme: "dark", FontSize: 14})}
-settings, ok := cfg.Settings.SafeGet()
-theme := cfg.Settings.SafeGetOrDefault(Settings{Theme: "light"}).Theme
+if cfg.Settings.Valid {
+    theme := cfg.Settings.Val.Theme // "dark"
+}
+// Val is zero value when !Valid
 ```
 
 ### 3.7 Hook Aspects
@@ -248,7 +250,7 @@ db.AddHook(&MetricsHook{})
 
 | Type | Description |
 |------|-------------|
-| `JsonValue[T]` | Generic JSON column (Scan/Value + SafeGet/SafeGetOrDefault/ValueOrZero/IsEmpty) |
+| `JsonValue[T]` | Generic JSON column (Scan/Value + MarshalJSON/UnmarshalJSON; Val/Valid direct access) |
 | `JSONText` | json.RawMessage wrapper, supports Scan/Value |
 | `NullJSONText` | Nullable JSONText |
 | `GzippedText` | Auto gzip compress/decompress []byte |

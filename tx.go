@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 	"reflect"
-	"sync"
 
 	"github.com/go-sqlex/sqlex/reflectx"
 )
@@ -13,16 +12,12 @@ import (
 // Tx is sqlex's enhanced wrapper around sql.Tx.
 // Note: Tx, like database/sql.Tx, is not safe for concurrent use.
 // Do not share the same Tx instance across goroutines for concurrent queries.
-// If you need serialized operations within a transaction, use the ExecFunc method,
-// which is the only method that provides internal locking.
 type Tx struct {
 	*sql.Tx
 	driverName string
 	Mapper     *reflectx.Mapper
 	hooks      []Hook
 	strict bool
-	// mu is only used for ExecFunc's concurrency protection; it does not cover other methods.
-	mu sync.Mutex
 }
 
 // DriverName returns the driverName used by the DB which began this transaction.
@@ -333,16 +328,6 @@ func (tx *Tx) CloseWithErr(err error) {
 			tx.logTxError("commit", cmErr)
 		}
 	}
-}
-
-// ExecFunc executes a function within a transaction, using a mutex to ensure concurrency safety.
-// This is the only method in Tx that provides internal locking, suitable for scenarios requiring
-// serialized transaction operations. All other Tx methods are unlocked; callers must ensure
-// that the same Tx is not used concurrently across goroutines.
-func (tx *Tx) ExecFunc(fn func(tx *Tx)) {
-	tx.mu.Lock()
-	defer tx.mu.Unlock()
-	fn(tx)
 }
 
 // logTxError reports transaction operation (commit/rollback) failures via Hook.

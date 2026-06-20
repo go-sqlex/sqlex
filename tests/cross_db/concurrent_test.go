@@ -156,43 +156,7 @@ func TestConcurrentHook(t *testing.T) {
 	})
 }
 
-// TestConcurrentExecFunc — 验证 ExecFunc 的 mutex 序列化
-func TestConcurrentExecFunc(t *testing.T) {
-	runWithSchema(crossSchema, t, func(db *sqlex.DB, t *testing.T, now string) {
-		crossDBOnly(t)
 
-		// 插入初始行
-		db.MustExec("INSERT INTO cross_users (name, email, age) VALUES ('counter', 'c@test.com', 0)")
-
-		tx := db.MustBegin()
-		defer tx.Rollback()
-
-		const goroutines = 20
-		var wg sync.WaitGroup
-
-		wg.Add(goroutines)
-		for i := 0; i < goroutines; i++ {
-			go func() {
-				defer wg.Done()
-				tx.ExecFunc(func(tx *sqlex.Tx) {
-					tx.MustExec("UPDATE cross_users SET age = age + 1 WHERE name = ?", "counter")
-				})
-			}()
-		}
-		wg.Wait()
-		tx.Commit()
-
-		var age int
-		err := db.Get(&age, "SELECT age FROM cross_users WHERE name = ?", "counter")
-		if err != nil {
-			t.Fatalf("[%s] Get failed: %v", dbLabel(db), err)
-		}
-		if age != goroutines {
-			t.Errorf("[%s] expected age=%d after %d concurrent ExecFunc, got %d",
-				dbLabel(db), goroutines, goroutines, age)
-		}
-	})
-}
 
 // 抑制 unused import
 var _ = fmt.Sprintf

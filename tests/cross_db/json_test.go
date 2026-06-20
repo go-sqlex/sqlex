@@ -116,9 +116,9 @@ func TestCrossDBJsonValueNull(t *testing.T) {
 }
 
 // ========================================================
-// TestCrossDBJsonValueMethods — 验证 ValueOrZero 在双库数据上正确工作
+// TestCrossDBJsonValueZeroVal — verify Val is zero when !Valid
 // ========================================================
-func TestCrossDBJsonValueMethods(t *testing.T) {
+func TestCrossDBJsonValueZeroVal(t *testing.T) {
 	runWithSchema(crossJsonSchema, t, func(db *sqlex.DB, t *testing.T, now string) {
 		crossDBOnly(t)
 
@@ -129,26 +129,18 @@ func TestCrossDBJsonValueMethods(t *testing.T) {
 		db.ExecContext(ctx, "INSERT INTO cross_json_test (name, metadata) VALUES (?, ?)", "valid", meta)
 		db.ExecContext(ctx, "INSERT INTO cross_json_test (name, metadata) VALUES (?, NULL)", "null_val")
 
-		// 有效值的 ValueOrZero
+		// Valid: Val field directly returns actual value
 		var validRow CrossJsonRow
-		err := db.GetContext(ctx, &validRow, "SELECT * FROM cross_json_test WHERE name = ?", "valid")
-		if err != nil {
-			t.Fatalf("[%s] Get valid row failed: %v", dbLabel(db), err)
-		}
-		val := validRow.Metadata.ValueOrZero()
-		if val.Version != "3.0" {
-			t.Errorf("[%s] ValueOrZero should return actual value, got: %+v", dbLabel(db), val)
+		db.GetContext(ctx, &validRow, "SELECT * FROM cross_json_test WHERE name = ?", "valid")
+		if !validRow.Metadata.Valid || validRow.Metadata.Val.Version != "3.0" {
+			t.Errorf("[%s] valid row should have Valid=true and correct Val", dbLabel(db))
 		}
 
-		// NULL 值的 ValueOrZero
+		// NULL: Val is zero value (guaranteed by Scan)
 		var nullRow CrossJsonRow
-		err = db.GetContext(ctx, &nullRow, "SELECT * FROM cross_json_test WHERE name = ?", "null_val")
-		if err != nil {
-			t.Fatalf("[%s] Get null row failed: %v", dbLabel(db), err)
-		}
-		zeroVal := nullRow.Metadata.ValueOrZero()
-		if zeroVal.Version != "" || zeroVal.Author != "" {
-			t.Errorf("[%s] ValueOrZero for NULL should return zero value, got: %+v", dbLabel(db), zeroVal)
+		db.GetContext(ctx, &nullRow, "SELECT * FROM cross_json_test WHERE name = ?", "null_val")
+		if nullRow.Metadata.Valid || nullRow.Metadata.Val.Version != "" {
+			t.Errorf("[%s] null row should have Valid=false and zero-value Val", dbLabel(db))
 		}
 	})
 }

@@ -391,8 +391,7 @@ db.Get(&a, "SELECT * FROM articles WHERE id = ?", 1)
 if a.Metadata.Valid {
     fmt.Println(a.Metadata.Val.Tags) // ["go", "sql"]
 }
-// ValueOrZero returns zero value if !Valid
-meta := a.Metadata.ValueOrZero()
+// Val is zero value when !Valid (guaranteed by Scan/zero-value init)
 // Marshal/Unmarshal (implements json.Marshaler/Unmarshaler)
 data, _ := json.Marshal(a.Metadata)
 json.Unmarshal(data, &a.Metadata)

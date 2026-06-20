@@ -137,8 +137,10 @@ type Config struct {
     Settings types.JsonValue[Settings] `db:"settings"`
 }
 cfg := Config{Settings: types.NewJsonValue(Settings{Theme: "dark", FontSize: 14})}
-settings, ok := cfg.Settings.SafeGet()
-theme := cfg.Settings.SafeGetOrDefault(Settings{Theme: "light"}).Theme
+if cfg.Settings.Valid {
+    theme := cfg.Settings.Val.Theme // "dark"
+}
+// !Valid 时 Val 为零值
 ```
 
 ### 3.7 Hook 切面
@@ -245,7 +247,7 @@ db.AddHook(&MetricsHook{})
 
 | 类型 | 说明 |
 |------|------|
-| `JsonValue[T]` | 泛型 JSON 列（Scan/Value + SafeGet/SafeGetOrDefault/ValueOrZero/IsEmpty） |
+| `JsonValue[T]` | 泛型 JSON 列（Scan/Value + MarshalJSON/UnmarshalJSON；直接访问 Val/Valid 字段） |
 | `JSONText` | json.RawMessage 包装，支持 Scan/Value |
 | `NullJSONText` | 可空的 JSONText |
 | `GzippedText` | 自动 gzip 压缩/解压的 []byte |

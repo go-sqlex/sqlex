@@ -429,8 +429,7 @@ db.Get(&a, "SELECT * FROM articles WHERE id = ?", 1)
 if a.Metadata.Valid {
     fmt.Println(a.Metadata.Val.Tags) // ["go", "sql"]
 }
-// ValueOrZero：!Valid 时返回零值
-meta := a.Metadata.ValueOrZero()
+// !Valid 时 Val 为零值（Scan / 零值初始化保证）
 // JSON 序列化/反序列化（实现了 json.Marshaler/Unmarshaler）
 data, _ := json.Marshal(a.Metadata)
 json.Unmarshal(data, &a.Metadata)
@@ -685,8 +684,7 @@ go test -bench=. -benchmem -run=NoSuch -benchtime=2s .
 | **bindMap/bindStruct** | 正常绑定 + 容错处理（缺失参数保持 `:name`） |
 | **Hook 洋葱模型** | BeforeQuery 正序 + AfterQuery 反序 + 零 Hook 安全 + 单 Hook |
 | **compileNamedQueryWith 容错** | QUESTION/DOLLAR/AT 三种 bindType × 无缺失/部分缺失/全部缺失 + 字符串字面量/注释/dollar-quote 内 `:name` 不识别 |
-| **ExecFunc 并发安全** | 多 goroutine 并发通过 ExecFunc 执行事务操作 |
-| **JsonValue[T]** | 单元测试（Scan/Value/Marshal/Unmarshal/IsEmpty）+ 集成测试（真实数据库读写/NULL 处理） |
+| **JsonValue[T]** | 单元测试（Scan/Value/MarshalJSON/UnmarshalJSON）+ 集成测试（真实数据库读写/NULL 处理） |
 | **MapperFunc** | 默认映射、自定义映射、独立 DB 副本映射互不影响 |
 | **StrictMode** | 默认值验证、Set/Get 方法、严格/宽松模式行为、DB→Tx/Conn/Row/Rows 继承传递、NamedStmt/Stmt 继承、错误信息包含列名和索引 |
 | **Conn** | SelectContext/GetContext/ExecContext/QueryxContext/QueryRowxContext/NamedGetContext/NamedSelectContext/NamedExecContext |
