@@ -195,20 +195,6 @@ func (h *crossOrderHook) AfterQuery(ctx context.Context, event *sqlex.QueryEvent
 	*h.order = append(*h.order, "after:"+h.name)
 }
 
-// crossFuncHook is a functional Hook implementation
-type crossFuncHook struct {
-	before func(ctx context.Context, event *sqlex.QueryEvent) context.Context
-	after  func(ctx context.Context, event *sqlex.QueryEvent)
-}
-
-func (h *crossFuncHook) BeforeQuery(ctx context.Context, event *sqlex.QueryEvent) context.Context {
-	return h.before(ctx, event)
-}
-
-func (h *crossFuncHook) AfterQuery(ctx context.Context, event *sqlex.QueryEvent) {
-	h.after(ctx, event)
-}
-
 // Suppress unused import warnings
 var (
 	_ = types.NewJsonValue[int]

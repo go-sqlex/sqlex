@@ -1153,8 +1153,8 @@ DROP TABLE IF EXISTS json_test;
 `,
 }
 
-// JsonTestRow 用于 JsonValue 集成测试的行结构
-type JsonTestRow struct {
+// JSONTestRow 用于 JsonValue 集成测试的行结构
+type JSONTestRow struct {
 	ID       int                    `db:"id"`
 	Name     string                 `db:"name"`
 	Metadata types.JsonValue[Attrs] `db:"metadata"`
@@ -1187,7 +1187,7 @@ func TestIntegrationJsonValue(t *testing.T) {
 		}
 
 		// 3. 读取有效的 JSON 值
-		var row JsonTestRow
+		var row JSONTestRow
 		err = db.Get(&row, "SELECT * FROM json_test WHERE name = ?", "alice")
 		if err != nil {
 			t.Fatalf("Get JsonValue row failed: %v", err)
@@ -1203,7 +1203,7 @@ func TestIntegrationJsonValue(t *testing.T) {
 		}
 
 		// 4. 读取 NULL JSON 值
-		var nullRow JsonTestRow
+		var nullRow JSONTestRow
 		err = db.Get(&nullRow, "SELECT * FROM json_test WHERE name = ?", "bob")
 		if err != nil {
 			t.Fatalf("Get null JsonValue row failed: %v", err)
@@ -1221,7 +1221,7 @@ func TestIntegrationJsonValue(t *testing.T) {
 		}
 
 		// 6. 验证更新结果
-		var updatedRow JsonTestRow
+		var updatedRow JSONTestRow
 		err = db.Get(&updatedRow, "SELECT * FROM json_test WHERE name = ?", "bob")
 		if err != nil {
 			t.Fatalf("Get updated JsonValue row failed: %v", err)
@@ -1235,7 +1235,7 @@ func TestIntegrationJsonValue(t *testing.T) {
 		}
 
 		// 7. Select 多行 — 混合 NULL 和非 NULL
-		var rows []JsonTestRow
+		var rows []JSONTestRow
 		err = db.Select(&rows, "SELECT * FROM json_test ORDER BY id")
 		if err != nil {
 			t.Fatalf("Select JsonValue rows failed: %v", err)
@@ -1295,18 +1295,9 @@ func TestIntegrationMapperFunc(t *testing.T) {
 			dbCopy := sqlex.NewDb(db.DB, db.DriverName())
 			dbCopy.MapperFunc(strings.ToUpper)
 
-			// 使用大写 Mapper 的 dbCopy 由于字段映射不上，应该无法正确 scan
-			// （因为 db tag 是小写的 "name"，而 mapper 将字段名转为大写 "NAME"，
-			// 但 SELECT * 返回的列名是 "name"，不匹配 "NAME"）
-			type UpperUser struct {
-				ID    int    `db:"NAME"`
-				Name  string `db:"NAME"`
-				Email string `db:"EMAIL"`
-				Age   int    `db:"AGE"`
-			}
-			// 对于大写 Mapper，结构体需要大写 tag 才能匹配
-			// 这里验证的是：原始 db 不受影响
-			var user IntUser
+		// With an uppercase mapper, struct fields need uppercase db tags to match.
+		// This test verifies: original db is unaffected by dbCopy's mapper change.
+		var user IntUser
 			err := db.Get(&user, "SELECT * FROM int_users WHERE name = ?", "Charlie")
 			if err != nil {
 				t.Fatalf("Original db should not be affected by dbCopy: %v", err)

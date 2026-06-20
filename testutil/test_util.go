@@ -1,3 +1,4 @@
+// Package testutil provides shared test infrastructure for sqlex tests.
 package testutil
 
 import (
