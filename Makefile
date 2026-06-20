@@ -5,7 +5,7 @@ SHELL = /bin/sh
 BASE_PACKAGE := github.com/go-sqlex/sqlex
 
 tooling:
-	go install honnef.co/go/tools/cmd/staticcheck@v0.6.1
+	go install honnef.co/go/tools/cmd/staticcheck@v0.7.0
 	go install golang.org/x/vuln/cmd/govulncheck@v1.1.3
 	go install golang.org/x/tools/cmd/goimports@v0.24.0
 
