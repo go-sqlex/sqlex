@@ -247,35 +247,26 @@ sqlex 采用**严格 `(?)` 语境识别**判断是否自动展开切片：只有
 | `(? + 1)` | 标量 | 不展开 | 算术表达式，不是 IN 列表 |
 | `(SELECT ?)` | 标量 | 不展开 | `?` 前有字母，非 `(?)` 形态 |
 
-**已知边界（必须用 `AsValue` 包装）**：
-
-- `ANY(?)` / `ALL(?)` （PostgreSQL 数组比较）—— `(?)` 形态命中但语义是单值
-- `func(?)` 标量函数传切片
-- INSERT/UPDATE 把切片整体作为字段值（如 PG `INT[]` 数组列、MySQL JSON 列）
-
-**逃生通道 API**：
+**Escape hatch APIs**（一般不需要，仅边界场景使用）：
 
 ```go
 import "github.com/go-sqlex/sqlex"
 
-// ① sqlex.AsValue(v) — 强制不展开（即使 ? 处于 (?) 形态）
-//    适用：ANY(?)、func(?)、INSERT INTO arr_col VALUES (?) 等
+// ① sqlex.AsValue(v) — 强制不展开
+db.Select(&rows, `SELECT * FROM t WHERE id IN (?)`,
+    sqlex.AsValue([]int{1, 2, 3})) // 整个切片当单值传给 driver
+
+// ② sqlex.AsList(slice) — 强制展开
 db.Select(&rows, `SELECT * FROM t WHERE id = ANY(?)`,
-    sqlex.AsValue(pq.Array([]int{1, 2, 3})))
-
-db.Exec(`INSERT INTO users (tags) VALUES (?)`,
-    sqlex.AsValue([]int{1, 2, 3})) // 切片整体当单值传给 driver
-
-// ② sqlex.AsList(slice) — 强制展开（即使 ? 不在 (?) 形态内）
-//    适用：动态拼 SQL 时无法保证 (?) 形态、业务明确要展开
-db.Exec(`SELECT some_func(?, ?)`, 100,
-    sqlex.AsList([]int{1, 2, 3})) // 第二个 ? 不在 (?) 形态内，但强制展开成 ?, ?, ?
+    sqlex.AsList([]int{1, 2, 3})) // 强制展开为 ?, ?, ?
 
 // ③ 其他原生方式仍然有效
 db.Exec(`INSERT INTO users (tags) VALUES (?)`, pq.Array([]int{1, 2, 3})) // driver.Valuer 接口
 data, _ := json.Marshal([]int{1, 2, 3})
 db.Exec(`INSERT INTO t (json_col) VALUES (?)`, data) // []byte 是 driver 标准类型
 ```
+
+> 注：`ANY(?)` / `VALUES (?)` / `func(?)` 等默认**不展开**，直接传切片或用 `pq.Array` 即可，无需 `AsValue`。
 
 **优先级**（从高到低）：
 
@@ -560,7 +551,7 @@ sqlex 在 jmoiron/sqlx 基础上修复了以下已知问题：
 
 | 问题 | 说明 |
 |------|------|
-| **原版不识别 SQL 词法元素** | 原版假设 SQL 中所有 `?`/`:name` 都是占位符，不区分字符串字面量、注释、双引号/反引号标识符、PG dollar quoting 等词法元素。这与 driver/数据库是否支持这些语法元素无关——driver 把 SQL 原样透传给 server 解析；sqlex 必须在 SQL **离开自己之前**正确识别词法，否则 `compileNamedQuery`/`In`/`Rebind` 会把字符串/注释里的 `?`/`:name` 当成真占位符，导致计数错乱、绑定到错误位置。实证见 `tests/cross_db/comments_test.go` |
+| **原版不识别 SQL 词法元素** | 原版假设 SQL 中所有 `?`/`:name` 都是占位符，不区分字符串字面量、注释、双引号/反引号标识符、PG dollar quoting 等词法元素。这与 driver/数据库是否支持这些语法元素无关——driver 把 SQL 原样透传给 server 解析；sqlex 必须在 SQL **离开自己之前**正确识别词法，否则 `compileNamedQuery`/`In`/`Rebind` 会把字符串/注释里的 `?`/`:name` 当成真占位符，导致计数错乱、绑定到错误位置。实证见 `tests/cross_db/named_test.go` |
 | **ConnectContext 连接泄漏** | `ConnectContext` 在 Ping 失败时未关闭连接，导致泄漏。sqlex 在 Ping 失败时会 `db.Close()` |
 | **Rebind 转义问号** | 原版不支持 `\?` 或 `??` 转义，导致字面量 `?` 被错误替换。sqlex 支持 `\?` → `?` 和 `??` → `?` |
 | **Rebind 字符串字面量** | 原版 `Rebind` 将单引号字符串字面量中的 `?`（如 `'What?'`）也替换为绑定变量。sqlex 正确跳过字符串字面量，包括 SQL 标准转义引号 `''` |
@@ -623,7 +614,7 @@ go test -count=1 -timeout=60s ./types/ ./reflectx/
 - 分驱动跑能快速二分定位 bug 所在的驱动
 - CI 配置时可以拆成并行 job，缩短反馈时间
 
-**DSN 配置**：项目根 `.env.test` 通过 `MY_HOST`/`PG_HOST` 等基础项自动拼装 `SQLX_MYSQL_DSN` / `SQLX_POSTGRES_DSN`，也可在命令行直接覆盖。设为 `skip` 即跳过该驱动相关测试。SQLite 默认用 `:memory:`。
+**DSN 配置**：在项目根 `.env.test` 中直接写入完整 DSN，使用 `SQLX_*_DSN` 命名空间。也可以命令行直接覆盖。设为 `skip` 即跳过该驱动相关测试。SQLite 默认用 `:memory:`。
 
 **控制变量速查**：
 
@@ -656,7 +647,7 @@ go test -count=1 -timeout=60s ./types/ ./reflectx/
 go test -count=1 -timeout=60s -run "TestNextPlaceholder" -v .
 
 # 跑单个 sub-test
-go test -count=1 -timeout=60s -run "TestNextPlaceholder/IN_\(\?\)_紧贴" -v .
+go test -count=1 -timeout=60s -run "TestNextPlaceholder/multiline_IN" -v .
 
 # Race 检测（gomonkey 测试不能用，普通测试推荐）
 go test -count=1 -race -timeout=180s .
