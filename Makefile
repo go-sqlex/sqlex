@@ -6,7 +6,6 @@ BASE_PACKAGE := github.com/go-sqlex/sqlex
 
 tooling:
 	go install honnef.co/go/tools/cmd/staticcheck@v0.7.0
-	go install golang.org/x/vuln/cmd/govulncheck@v1.1.3
 
 has-changes:
 	git diff --exit-code --quiet HEAD --
@@ -21,7 +20,7 @@ fmt:
 	gofmt -d . | tee /dev/stderr | grep -q . && exit 1 || true
 
 vuln-check:
-	govulncheck ./...
+	go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 
 test-race:
 	go test -v -race -count=1 ./...
