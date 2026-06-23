@@ -154,4 +154,3 @@ func TestConcurrentHook(t *testing.T) {
 		}
 	})
 }
-

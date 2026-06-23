@@ -213,4 +213,3 @@ DROP TABLE IF EXISTS cross_unique_users;
 		})
 	})
 }
-

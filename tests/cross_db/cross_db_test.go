@@ -193,4 +193,3 @@ func (h *crossOrderHook) AfterQuery(ctx context.Context, event *sqlex.QueryEvent
 	defer h.mu.Unlock()
 	*h.order = append(*h.order, "after:"+h.name)
 }
-

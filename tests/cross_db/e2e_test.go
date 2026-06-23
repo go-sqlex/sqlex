@@ -220,4 +220,3 @@ func TestCrossDBConnNamedExecAutoIn(t *testing.T) {
 		}
 	})
 }
-

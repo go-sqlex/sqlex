@@ -168,5 +168,3 @@ func TestCrossDBRebindInTx(t *testing.T) {
 		}
 	})
 }
-
-

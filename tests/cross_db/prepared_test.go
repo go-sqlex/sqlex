@@ -394,4 +394,3 @@ func TestCrossDBBindExtAutoIN(t *testing.T) {
 		}
 	})
 }
-
