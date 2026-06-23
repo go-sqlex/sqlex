@@ -319,17 +319,29 @@ Named parameter `:name` rule: `[A-Za-z_][A-Za-z0-9_.]*` (letter/underscore start
 ### Prepared Statements
 
 ```go
-// Preparex auto-Rebinds — use ? uniformly
+// Preparex auto-Rebinds — use ? uniformly across all databases
 stmt, err := db.Preparex("SELECT * FROM users WHERE name = ?")
+defer stmt.Close() // Stmt must be Closed to avoid resource leaks
 var user User
 err = stmt.Get(&user, "Alice")
+
+// Also works within transactions
+tx, _ := db.Beginx()
+stmt, err = tx.Preparex("SELECT * FROM users WHERE age > ?")
+defer stmt.Close()
+var users []User
+err = stmt.Select(&users, 18)
 
 // PreparexContext — context-aware version
 ctx := context.Background()
 stmt, err = db.PreparexContext(ctx, "SELECT * FROM users WHERE name = ?")
+defer stmt.Close()
+var user2 User
+err = stmt.Get(&user2, "Alice")
 
-// PrepareNamed — named prepared statement
+// PrepareNamed — named prepared statement (use :name uniformly, framework handles binding)
 nstmt, err := db.PrepareNamed("SELECT * FROM users WHERE name = :name")
+defer nstmt.Close()
 err = nstmt.Get(&user, map[string]any{"name": "Alice"})
 
 // PreparerContext — write generic prepare functions accepting DB/Tx/Conn
@@ -337,6 +349,15 @@ func prepareQuery(p sqlex.PreparerContext) (*sqlex.Stmt, error) {
     return sqlex.PreparexContext(context.Background(), p, "SELECT * FROM users WHERE name = ?")
 }
 ```
+
+> **Unified experience**: `Preparex`/`PreparexContext` auto-Rebind like all other query methods, using `?` uniformly.
+> `PrepareNamed`/`PrepareNamedContext` use named parameters `:name`; the framework handles binding internally.
+>
+> **Note**: Prepared statements (`Stmt`/`NamedStmt`) **do not support IN slice expansion**. The number of placeholders is fixed at `Prepare` time and cannot be dynamically expanded at execution time. For IN queries, use non-prepared methods like `db.Select` / `db.NamedSelect`.
+>
+> **Resource management**: `Stmt`/`NamedStmt` hold an underlying `sql.Stmt` and **must be Closed** after use. Forgetting `Close()` causes prepared statement resource leaks in the connection pool that are only reclaimed on `DB.Close()`. Recommended pattern: `defer stmt.Close()`.
+>
+> **Hook coverage**: `Stmt`/`NamedStmt` `Exec`/`Query` methods also fire Hooks. Hooks are auto-propagated from the parent DB/Tx/Conn to the Stmt.
 
 ### Transaction Management
 
@@ -418,6 +439,54 @@ func (h *TracingHook) AfterQuery(ctx context.Context, event *sqlex.QueryEvent) {
 }
 
 db.AddHook(&TracingHook{})
+
+// Hook covers the full lifecycle: query/exec/begin/commit/rollback
+// Transaction operations (Begin/Commit/Rollback) also fire Hooks, regardless of success or failure
+tx, _ := db.Beginx()       // → Hook(OpBegin)
+// tx queries also fire Hooks
+tx.CloseWithErr(nil)       // → Hook(OpCommit) or Hook(OpRollback)
+```
+
+#### QueryEvent Fields
+
+```go
+type QueryEvent struct {
+    Query         string        // SQL statement
+    Args          []any         // execution parameters
+    Duration      time.Duration // total elapsed time (includes Hook chain overhead)
+    Error         error         // execution error (available in AfterQuery phase)
+    OperationType OpType        // operation type: OpQuery/OpExec/OpBegin/OpCommit/OpRollback
+    RowsAffected  int64         // rows affected (only for exec operations)
+    LastInsertID  int64         // last inserted auto-increment ID (only for exec)
+}
+```
+
+#### Conditional Hook Filtering
+
+sqlex does not ship a built-in filter; use the decorator pattern to compose your own:
+
+```go
+// Only fire on slow queries
+func SlowOnly(h sqlex.Hook, threshold time.Duration) sqlex.Hook {
+    return &slowHook{hook: h, threshold: threshold}
+}
+type slowHook struct {
+    hook      sqlex.Hook
+    threshold time.Duration
+}
+func (h *slowHook) BeforeQuery(ctx context.Context, e *sqlex.QueryEvent) context.Context {
+    return h.hook.BeforeQuery(ctx, e)
+}
+func (h *slowHook) AfterQuery(ctx context.Context, e *sqlex.QueryEvent) {
+    if e.Duration >= h.threshold {
+        h.hook.AfterQuery(ctx, e)
+    }
+}
+
+// Only fire on errors
+func OnError(h sqlex.Hook) sqlex.Hook { /* BeforeQuery passthrough, AfterQuery checks e.Error != nil */ }
+
+db.AddHook(SlowOnly(&AlertHook{}, 500*time.Millisecond))
 ```
 
 ### StrictMode

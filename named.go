@@ -26,6 +26,7 @@ import (
 
 // NamedStmt is a prepared statement that executes named queries.  Prepare it
 // how you would execute a NamedQuery, but pass in a struct or map when executing.
+// NamedStmt does not support IN slice expansion; use db.NamedSelect instead.
 type NamedStmt struct {
 	Params      []string
 	QueryString string
@@ -92,7 +93,7 @@ func (n *NamedStmt) Queryx(arg any) (*Rows, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Rows{Rows: r, Mapper: n.Stmt.Mapper, strict: n.strict}, err
+	return &Rows{Rows: r, Mapper: n.Stmt.Mapper, strict: n.strict}, nil
 }
 
 // QueryRowx this NamedStmt.  Because of limitations with QueryRow, this is
@@ -170,7 +171,7 @@ func (n *NamedStmt) QueryxContext(ctx context.Context, arg any) (*Rows, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Rows{Rows: r, Mapper: n.Stmt.Mapper, strict: n.strict}, err
+	return &Rows{Rows: r, Mapper: n.Stmt.Mapper, strict: n.strict}, nil
 }
 
 // QueryRowxContext this NamedStmt.  Because of limitations with QueryRow, this is

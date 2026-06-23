@@ -325,29 +325,39 @@ db.Exec(`INSERT INTO t (json_col) VALUES (?)`, data) // []byte 是 driver 标准
 
 // MySQL、PostgreSQL、SQLite — 统一使用 ?
 stmt, err := db.Preparex("SELECT * FROM users WHERE name = ?")
+defer stmt.Close() // 预编译语句用完必须 Close，避免资源泄漏
 var user User
 err = stmt.Get(&user, "Alice")
 
 // 事务中同样使用统一占位符
 tx, _ := db.Beginx()
 stmt, err = tx.Preparex("SELECT * FROM users WHERE age > ?")
+defer stmt.Close()
 var users []User
 err = stmt.Select(&users, 18)
 
 // PreparexContext — 带 Context 版本
 ctx := context.Background()
 stmt, err = db.PreparexContext(ctx, "SELECT * FROM users WHERE name = ?")
+defer stmt.Close()
 var user User
 err = stmt.Get(&user, "Alice")
 
 // PrepareNamed — 命名预编译语句（统一使用 :name 风格，框架内部处理绑定转换）
 nstmt, err := db.PrepareNamed("SELECT * FROM users WHERE name = :name")
+defer nstmt.Close() // 预编译语句用完必须 Close，避免资源泄漏
 var user User
 err = nstmt.Get(&user, map[string]any{"name": "Alice"})
 ```
 
 > **统一体验**：`Preparex`/`PreparexContext` 与其他所有查询方法一样，自动 Rebind，统一使用 `?` 占位符。
 > `PrepareNamed`/`PrepareNamedContext` 使用命名参数 `:name`，框架内部会正确处理绑定转换。
+>
+> **注意**：预编译语句（`Stmt`/`NamedStmt`）**不支持 IN 切片展开**。因为占位符数量在 `Prepare` 时已固定，无法在执行时动态展开。如需 IN 查询，请使用 `db.Select`/`db.NamedSelect` 等非预编译方法。
+>
+> **资源管理**：`Stmt`/`NamedStmt` 底层持有 `sql.Stmt`，必须在使用后调用 `Close()` 释放。忘记 `Close()` 会导致连接池中的预处理语句资源泄漏，直到 `DB.Close()` 才回收。推荐模式：`defer stmt.Close()`。
+>
+> **Hook 覆盖**：`Stmt`/`NamedStmt` 的 `Exec`/`Query` 方法同样触发 Hook，Hook 从所属的 DB/Tx/Conn 自动传播到 Stmt。
 
 #### PreparerContext 统一接口
 
@@ -458,9 +468,53 @@ func (h *TracingHook) AfterQuery(ctx context.Context, event *sqlex.QueryEvent) {
 
 db.AddHook(&TracingHook{})
 
-// Hook 对事务也生效（自动继承）
-tx, _ := db.Beginx()
+// Hook 覆盖完整生命周期：query/exec/begin/commit/rollback
+// 事务操作（Begin/Commit/Rollback）也会触发 Hook，无论成功或失败
+tx, _ := db.Beginx()       // → Hook(OpBegin)
 // tx 的查询也会触发注册的 Hook
+tx.CloseWithErr(nil)       // → Hook(OpCommit) 或 Hook(OpRollback)
+```
+
+#### QueryEvent 字段
+
+```go
+type QueryEvent struct {
+    Query         string        // SQL 语句
+    Args          []any         // 执行参数
+    Duration      time.Duration // 总耗时（含 Hook 链开销）
+    Error         error         // 执行错误（AfterQuery 阶段有值）
+    OperationType OpType        // 操作类型：OpQuery/OpExec/OpBegin/OpCommit/OpRollback
+    RowsAffected  int64         // 受影响行数（仅 exec 操作）
+    LastInsertID  int64         // 最后插入的自增 ID（仅 exec 操作）
+}
+```
+
+#### 按条件过滤 Hook
+
+sqlex 不内置过滤器，推荐用装饰器模式自行组合：
+
+```go
+// 仅在慢查询时触发
+func SlowOnly(h sqlex.Hook, threshold time.Duration) sqlex.Hook {
+    return &slowHook{hook: h, threshold: threshold}
+}
+type slowHook struct {
+    hook      sqlex.Hook
+    threshold time.Duration
+}
+func (h *slowHook) BeforeQuery(ctx context.Context, e *sqlex.QueryEvent) context.Context {
+    return h.hook.BeforeQuery(ctx, e)
+}
+func (h *slowHook) AfterQuery(ctx context.Context, e *sqlex.QueryEvent) {
+    if e.Duration >= h.threshold {
+        h.hook.AfterQuery(ctx, e)
+    }
+}
+
+// 仅在出错时触发
+func OnError(h sqlex.Hook) sqlex.Hook { /* BeforeQuery 透传，AfterQuery 判 e.Error != nil */ }
+
+db.AddHook(SlowOnly(&AlertHook{}, 500*time.Millisecond))
 ```
 
 ### StrictMode 严格模式

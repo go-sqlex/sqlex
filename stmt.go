@@ -7,7 +7,8 @@ import (
 	"github.com/go-sqlex/sqlex/reflectx"
 )
 
-// Stmt is an sqlex wrapper around sql.Stmt with extra functionality
+// Stmt is an sqlex wrapper around sql.Stmt with extra functionality.
+// Stmt does not support IN slice expansion; use db.Select instead.
 type Stmt struct {
 	*sql.Stmt
 	Mapper *reflectx.Mapper

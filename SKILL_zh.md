@@ -47,7 +47,8 @@ description: sqlex 是基于 jmoiron/sqlx 的 Go database/sql 现代化增强封
 
 需要预编译？
 ├─ 位置参数 → db.Preparex / db.PreparexContext
-└─ 命名参数 → db.PrepareNamed / db.PrepareNamedContext
+├─ 命名参数 → db.PrepareNamed / db.PrepareNamedContext
+└─ 注意：预编译语句不支持 IN 切片展开（占位符在 Prepare 时已固定）
 
 需要单连接？ → db.Connx(ctx) → conn（与 DB/Tx 接口对齐）
 
@@ -151,11 +152,12 @@ func (h *MetricsHook) BeforeQuery(ctx context.Context, event *sqlex.QueryEvent) 
     return ctx
 }
 func (h *MetricsHook) AfterQuery(ctx context.Context, event *sqlex.QueryEvent) {
-    recordMetric(event.Query, event.Duration, event.Error)
+    recordMetric(event.Query, event.Duration, event.Error, event.OperationType, event.RowsAffected)
 }
 db.AddHook(&MetricsHook{})
 // Hook 也适用于 Tx/Conn（自动继承）
 // 多个 Hook：BeforeQuery 正序，AfterQuery 反序（洋葱模型）
+// 覆盖完整生命周期：OpQuery/OpExec/OpBegin/OpCommit/OpRollback
 ```
 
 **按条件过滤**：sqlex 不内置过滤器，用装饰器包装即可：
@@ -172,11 +174,12 @@ db.AddHook(SlowOnly(&AlertHook{}, 500*time.Millisecond))
 1. **使用统一 `?` 占位符** — 所有查询方法自动 Rebind
 2. **事务使用 `CloseWithErr`** — `defer func() { tx.CloseWithErr(err) }()`
 3. **生产环境使用 Context 方法** — `GetContext`/`SelectContext` 支持超时控制
-4. **NamedSelect + IN** — 无需手动调用 `In()`
-5. **ANY(?)/VALUES(?) 自动安全** — 默认不再展开，无需 `AsValue` 兜底
-6. **初始化时注册 Hook** — Tx/Conn 自动继承 DB 的 Hook
-7. **PostgreSQL JSONB `?` 操作符** — 用 `??` 转义
-8. **StrictMode 按需开启** — 默认宽松；开发时 `db.SetStrict(true)` 助查问题
+4. **预编译语句必须 Close** — `Stmt`/`NamedStmt` 持有 `sql.Stmt`，用完 `defer stmt.Close()` 避免资源泄漏
+5. **NamedSelect + IN** — 无需手动调用 `In()`
+6. **ANY(?)/VALUES(?) 自动安全** — 默认不再展开，无需 `AsValue` 兜底
+7. **初始化时注册 Hook** — Tx/Conn 自动继承 DB 的 Hook
+8. **PostgreSQL JSONB `?` 操作符** — 用 `??` 转义
+9. **StrictMode 按需开启** — 默认宽松；开发时 `db.SetStrict(true)` 助查问题
 
 ### ⚠️ 常见陷阱
 
@@ -185,7 +188,9 @@ db.AddHook(SlowOnly(&AlertHook{}, 500*time.Millisecond))
 3. **Tx 非并发安全** — 用 `Tx.ExecFunc()` 做并发保护
 4. **Hook 同步执行** — 重量级操作应在 Hook 内异步
 5. **命名参数名限 ASCII** — `[A-Za-z_][A-Za-z0-9_.]*`；数字开头 `:123` 不被识别
-6. **StrictMode 默认宽松** — 与 sqlx `db.Unsafe()` 行为一致
+6. **Stmt/NamedStmt 不支持 IN 展开** — 占位符在 Prepare 时已固定，IN 查询请用 `db.Select`/`db.NamedSelect`
+7. **Stmt/NamedStmt 必须 Close** — 持有 `sql.Stmt`，忘记 `Close()` 会导致资源泄漏直到 `DB.Close()`
+8. **StrictMode 默认宽松** — 与 sqlx `db.Unsafe()` 行为一致
 
 ## 5. 与 jmoiron/sqlx 的差异
 

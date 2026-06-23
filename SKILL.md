@@ -50,7 +50,8 @@ Need to execute?
 
 Need prepared statements?
 ├─ Positional → db.Preparex / db.PreparexContext
-└─ Named → db.PrepareNamed / db.PrepareNamedContext
+├─ Named → db.PrepareNamed / db.PrepareNamedContext
+└─ Note: Prepared stmts do not support IN slice expansion (placeholders fixed at Prepare time)
 
 Need single connection? → db.Connx(ctx) → conn (aligned with DB/Tx interface)
 
@@ -154,11 +155,12 @@ func (h *MetricsHook) BeforeQuery(ctx context.Context, event *sqlex.QueryEvent) 
     return ctx
 }
 func (h *MetricsHook) AfterQuery(ctx context.Context, event *sqlex.QueryEvent) {
-    recordMetric(event.Query, event.Duration, event.Error)
+    recordMetric(event.Query, event.Duration, event.Error, event.OperationType, event.RowsAffected)
 }
 db.AddHook(&MetricsHook{})
 // Hooks also apply to Tx/Conn (auto-inherited)
 // Multiple Hooks: BeforeQuery forward order, AfterQuery reverse order (onion model)
+// Covers full lifecycle: OpQuery/OpExec/OpBegin/OpCommit/OpRollback
 ```
 
 **Conditional filtering**: sqlex does not ship a built-in filter; use decorators:
@@ -175,11 +177,12 @@ db.AddHook(SlowOnly(&AlertHook{}, 500*time.Millisecond))
 1. **Use unified `?` placeholder** — All query methods auto-Rebind
 2. **Use `CloseWithErr` for transactions** — `defer func() { tx.CloseWithErr(err) }()`
 3. **Use Context methods in production** — `GetContext`/`SelectContext` for timeout control
-4. **NamedSelect + IN** — No need to manually call `In()`
-5. **ANY(?)/VALUES(?) auto-safe** — No longer expand by default; no `AsValue` needed
-6. **Register Hooks at initialization** — Tx/Conn auto-inherit DB's Hooks
-7. **PostgreSQL JSONB `?` operator** — Use `??` escape
-8. **StrictMode optional** — Default lenient; enable `db.SetStrict(true)` for development
+4. **Close prepared statements** — `Stmt`/`NamedStmt` hold `sql.Stmt`, use `defer stmt.Close()` to avoid resource leaks
+5. **NamedSelect + IN** — No need to manually call `In()`
+6. **ANY(?)/VALUES(?) auto-safe** — No longer expand by default; no `AsValue` needed
+7. **Register Hooks at initialization** — Tx/Conn auto-inherit DB's Hooks
+8. **PostgreSQL JSONB `?` operator** — Use `??` escape
+9. **StrictMode optional** — Default lenient; enable `db.SetStrict(true)` for development
 
 ### ⚠️ Common Pitfalls
 
@@ -188,7 +191,9 @@ db.AddHook(SlowOnly(&AlertHook{}, 500*time.Millisecond))
 3. **Tx is not concurrency-safe** — Use `Tx.ExecFunc()` for concurrency protection
 4. **Hooks execute synchronously** — Heavy operations should be async inside Hooks
 5. **Named parameter names limited to ASCII** — `[A-Za-z_][A-Za-z0-9_.]*`; digit-starting `:123` not recognized
-6. **StrictMode defaults to lenient** — Consistent with sqlx `db.Unsafe()` behavior
+6. **Stmt/NamedStmt do not support IN expansion** — placeholders fixed at Prepare time; use `db.Select`/`db.NamedSelect` for IN queries
+7. **Stmt/NamedStmt must be Closed** — hold `sql.Stmt`, forgetting `Close()` causes resource leaks until `DB.Close()`
+8. **StrictMode defaults to lenient** — Consistent with sqlx `db.Unsafe()` behavior
 
 ## 5. Differences from jmoiron/sqlx
 
