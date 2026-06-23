@@ -28,7 +28,6 @@ import (
 	"time"
 
 	sqlex "github.com/go-sqlex/sqlex"
-	"github.com/go-sqlex/sqlex/types"
 )
 
 // ---------- Cross-DB test helper functions ----------
@@ -195,7 +194,3 @@ func (h *crossOrderHook) AfterQuery(ctx context.Context, event *sqlex.QueryEvent
 	*h.order = append(*h.order, "after:"+h.name)
 }
 
-// Suppress unused import warnings
-var (
-	_ = types.NewJSONValue[int]
-)

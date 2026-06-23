@@ -3,7 +3,6 @@ package cross_db_test
 
 import (
 	"context"
-	"sync"
 	"testing"
 
 	sqlex "github.com/go-sqlex/sqlex"
@@ -222,5 +221,3 @@ func TestCrossDBConnNamedExecAutoIn(t *testing.T) {
 	})
 }
 
-// Suppress unused import warnings
-var _ = sync.Mutex{}

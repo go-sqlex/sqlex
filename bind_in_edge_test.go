@@ -3,6 +3,7 @@ package sqlex
 import (
 	"database/sql/driver"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -314,7 +315,7 @@ func TestIn_EdgeCases(t *testing.T) {
 				if err == nil {
 					t.Fatalf("expected error containing %q, got nil", c.wantErr)
 				}
-				if !stringContains(err.Error(), c.wantErr) {
+				if !strings.Contains(err.Error(), c.wantErr) {
 					t.Errorf("error = %q, want substring %q", err.Error(), c.wantErr)
 				}
 				return
@@ -667,7 +668,7 @@ func TestAutoIn_AsValueAsList_EscapeHooks(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error for non-slice AsList, got nil")
 		}
-		if !stringContains(err.Error(), "AsList: argument is not a slice") {
+		if !strings.Contains(err.Error(), "AsList: argument is not a slice") {
 			t.Errorf("error should contain 'AsList: argument is not a slice': got %v", err)
 		}
 	})
@@ -678,7 +679,7 @@ func TestAutoIn_AsValueAsList_EscapeHooks(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error for array AsList, got nil")
 		}
-		if !stringContains(err.Error(), "AsList: argument is not a slice") {
+		if !strings.Contains(err.Error(), "AsList: argument is not a slice") {
 			t.Errorf("error should contain 'AsList: argument is not a slice': got %v", err)
 		}
 	})
@@ -690,7 +691,7 @@ func TestAutoIn_AsValueAsList_EscapeHooks(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error for []byte AsList, got nil")
 		}
-		if !stringContains(err.Error(), "AsList: argument is not a slice") {
+		if !strings.Contains(err.Error(), "AsList: argument is not a slice") {
 			t.Errorf("error should contain 'AsList: argument is not a slice': got %v", err)
 		}
 	})
@@ -700,7 +701,7 @@ func TestAutoIn_AsValueAsList_EscapeHooks(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error for empty slice AsList")
 		}
-		if !stringContains(err.Error(), "AsList: empty slice") {
+		if !strings.Contains(err.Error(), "AsList: empty slice") {
 			t.Errorf("error should contain 'AsList: empty slice': got %v", err)
 		}
 	})
@@ -878,10 +879,10 @@ func TestAutoIn_EmptySlice_ContextSensitive(t *testing.T) {
 		if err == nil {
 			t.Fatal("IN (?) context + empty slice should error, but got nil")
 		}
-		if !stringContains(err.Error(), "empty slice") {
+		if !strings.Contains(err.Error(), "empty slice") {
 			t.Errorf("error should contain 'empty slice': got %v", err)
 		}
-		if !stringContains(err.Error(), "IN ()") {
+		if !strings.Contains(err.Error(), "IN ()") {
 			t.Errorf("error should explain IN () is invalid SQL: got %v", err)
 		}
 	})
@@ -942,7 +943,7 @@ func TestAutoIn_EmptySlice_ContextSensitive(t *testing.T) {
 		if err == nil {
 			t.Fatal("IN (?) + empty slice should error")
 		}
-		if !stringContains(err.Error(), "empty slice") {
+		if !strings.Contains(err.Error(), "empty slice") {
 			t.Errorf("error should contain 'empty slice': got %v", err)
 		}
 	})
@@ -974,7 +975,7 @@ func TestIn_ArgCountMismatch(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error for ? exceeds args, got nil")
 		}
-		if !stringContains(err.Error(), "number of bindVars exceeds arguments") {
+		if !strings.Contains(err.Error(), "number of bindVars exceeds arguments") {
 			t.Errorf("error should contain 'number of bindVars exceeds arguments': got %v", err)
 		}
 	})
@@ -985,7 +986,7 @@ func TestIn_ArgCountMismatch(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error for args exceeds ?, got nil")
 		}
-		if !stringContains(err.Error(), "number of bindVars less than number arguments") {
+		if !strings.Contains(err.Error(), "number of bindVars less than number arguments") {
 			t.Errorf("error should contain 'number of bindVars less than number arguments': got %v", err)
 		}
 	})
@@ -996,7 +997,7 @@ func TestIn_ArgCountMismatch(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
-		if !stringContains(err.Error(), "exceeds arguments") {
+		if !strings.Contains(err.Error(), "exceeds arguments") {
 			t.Errorf("error should contain 'exceeds arguments': got %v", err)
 		}
 	})
@@ -1006,7 +1007,7 @@ func TestIn_ArgCountMismatch(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
-		if !stringContains(err.Error(), "less than number arguments") {
+		if !strings.Contains(err.Error(), "less than number arguments") {
 			t.Errorf("error should contain 'less than number arguments': got %v", err)
 		}
 	})

@@ -2,7 +2,6 @@
 package cross_db_test
 
 import (
-	"context"
 	"errors"
 	"testing"
 
@@ -215,5 +214,3 @@ DROP TABLE IF EXISTS cross_unique_users;
 	})
 }
 
-// 用于抑制 unused import 警告
-var _ = context.Background

@@ -2,8 +2,6 @@
 package cross_db_test
 
 import (
-	"database/sql"
-	"errors"
 	"testing"
 
 	sqlex "github.com/go-sqlex/sqlex"
@@ -171,8 +169,4 @@ func TestCrossDBRebindInTx(t *testing.T) {
 	})
 }
 
-// Suppress unused import warnings
-var (
-	_ = sql.ErrNoRows
-	_ = errors.New
-)
+

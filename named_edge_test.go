@@ -2,6 +2,8 @@ package sqlex
 
 import (
 	"reflect"
+	"slices"
+	"strings"
 	"testing"
 )
 
@@ -252,7 +254,7 @@ func TestCompileNamedQuery_EdgeCases(t *testing.T) {
 				if err == nil {
 					t.Fatalf("expected error containing %q, got nil", c.wantErrMsg)
 				}
-				if !contains(err.Error(), c.wantErrMsg) {
+				if !strings.Contains(err.Error(), c.wantErrMsg) {
 					t.Errorf("error message = %q, want substring %q", err.Error(), c.wantErrMsg)
 				}
 				return
@@ -266,7 +268,7 @@ func TestCompileNamedQuery_EdgeCases(t *testing.T) {
 					c.query, gotBound, c.wantBound)
 			}
 			// names 比较：[]string{} 与 nil 视为相等
-			if !equalStrSlice(gotNames, c.wantNames) {
+			if !slices.Equal(gotNames, c.wantNames) {
 				t.Errorf("names mismatch:\n  query=%q\n  got =%v\n  want=%v",
 					c.query, gotNames, c.wantNames)
 			}
@@ -416,30 +418,8 @@ func TestBindArray_EdgeCases(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error for empty slice, got nil")
 		}
-		if !contains(err.Error(), "length of array is 0") {
+		if !strings.Contains(err.Error(), "length of array is 0") {
 			t.Errorf("err = %v, want contain 'length of array is 0'", err)
 		}
 	})
-}
-
-// 抑制 unused 警告
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr ||
-		(len(s) > len(substr) && stringContains(s, substr)))
-}
-
-func stringContains(s, substr string) bool {
-	for i := 0; i+len(substr) <= len(s); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
-}
-
-func equalStrSlice(a, b []string) bool {
-	if len(a) == 0 && len(b) == 0 {
-		return true
-	}
-	return reflect.DeepEqual(a, b)
 }

@@ -2,7 +2,6 @@ package sqlex
 
 import (
 	"database/sql"
-	"database/sql/driver"
 	"errors"
 	"fmt"
 	"reflect"
@@ -161,6 +160,3 @@ func (r *Row) scanAny(dest any, structOnly bool) error {
 func (r *Row) StructScan(dest any) error {
 	return r.scanAny(dest, true)
 }
-
-//lint:ignore U1000 ignoring this for now
-var _valuerInterface = reflect.TypeOf((*driver.Valuer)(nil)).Elem()

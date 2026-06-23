@@ -5,7 +5,6 @@ package cross_db_test
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -156,5 +155,3 @@ func TestConcurrentHook(t *testing.T) {
 	})
 }
 
-// 抑制 unused import
-var _ = fmt.Sprintf

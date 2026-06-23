@@ -395,5 +395,3 @@ func TestCrossDBBindExtAutoIN(t *testing.T) {
 	})
 }
 
-// 抑制 unused import 警告
-var _ = context.Background
