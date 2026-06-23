@@ -5,6 +5,17 @@ import (
 	"time"
 )
 
+// OpType represents the type of SQL operation.
+type OpType string
+
+const (
+	OpQuery    OpType = "query"
+	OpExec     OpType = "exec"
+	OpBegin    OpType = "begin"
+	OpCommit   OpType = "commit"
+	OpRollback OpType = "rollback"
+)
+
 // QueryEvent describes the context of a SQL execution event.
 type QueryEvent struct {
 	// Query is the SQL statement.
@@ -19,8 +30,12 @@ type QueryEvent struct {
 	Duration time.Duration
 	// Error is the execution error (only set in the AfterQuery phase).
 	Error error
-	// OperationType is the operation type: query/exec/prepare/commit/rollback.
-	OperationType string
+	// OperationType is the operation type.
+	OperationType OpType
+	// RowsAffected is the number of rows affected, only set for exec operations.
+	RowsAffected int64
+	// LastInsertID is the auto-increment ID of the last inserted row, only set for exec operations.
+	LastInsertID int64
 }
 
 // Hook is the SQL execution aspect interface.
@@ -37,6 +52,27 @@ type QueryEvent struct {
 type Hook interface {
 	BeforeQuery(ctx context.Context, event *QueryEvent) context.Context
 	AfterQuery(ctx context.Context, event *QueryEvent)
+}
+
+// pipeline encapsulates the query preparation pipeline: autoIn expansion +
+// Rebind cross-database conversion + Hook triggering.
+// DB, Tx, and Conn share this behavior by embedding pipeline.
+type pipeline struct {
+	driverName string
+	hooks      []Hook
+}
+
+// prepare runs the autoIn → Rebind → executeHooks pipeline on the query,
+// returning the prepared context, afterFunc, and event.
+func (p *pipeline) prepare(ctx context.Context, query string, args []any, op OpType) (context.Context, func(), *QueryEvent, error) {
+	var err error
+	if query, args, err = autoIn(query, args...); err != nil {
+		return ctx, nil, nil, err
+	}
+	query = Rebind(BindType(p.driverName), query)
+	event := &QueryEvent{Query: query, Args: args, OperationType: op}
+	ctx, afterFunc := executeHooks(ctx, p.hooks, event)
+	return ctx, afterFunc, event, nil
 }
 
 // executeHooks calls the Hook chain in the DB's core execution path.

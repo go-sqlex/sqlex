@@ -16,7 +16,7 @@ func TestCrossDBHookStmt(t *testing.T) {
 		crossDBOnly(t)
 		seedCrossData(db, t)
 
-		dbCopy := sqlex.NewDb(db.DB, db.DriverName())
+		dbCopy := sqlex.NewDB(db.DB, db.DriverName())
 		hook := &crossTestHook{}
 		dbCopy.AddHook(hook)
 
@@ -59,7 +59,7 @@ func TestCrossDBHookNamedStmt(t *testing.T) {
 		crossDBOnly(t)
 		seedCrossData(db, t)
 
-		dbCopy := sqlex.NewDb(db.DB, db.DriverName())
+		dbCopy := sqlex.NewDB(db.DB, db.DriverName())
 		hook := &crossTestHook{}
 		dbCopy.AddHook(hook)
 
@@ -101,7 +101,7 @@ func TestCrossDBHookStmtExec(t *testing.T) {
 		crossDBOnly(t)
 		seedCrossData(db, t)
 
-		dbCopy := sqlex.NewDb(db.DB, db.DriverName())
+		dbCopy := sqlex.NewDB(db.DB, db.DriverName())
 		hook := &crossTestHook{}
 		dbCopy.AddHook(hook)
 
@@ -138,7 +138,7 @@ func TestCrossDBHookStmtInTx(t *testing.T) {
 		crossDBOnly(t)
 		seedCrossData(db, t)
 
-		dbCopy := sqlex.NewDb(db.DB, db.DriverName())
+		dbCopy := sqlex.NewDB(db.DB, db.DriverName())
 		hook := &crossTestHook{}
 		dbCopy.AddHook(hook)
 

@@ -158,6 +158,13 @@ db.AddHook(&MetricsHook{})
 // 多个 Hook：BeforeQuery 正序，AfterQuery 反序（洋葱模型）
 ```
 
+**按条件过滤**：sqlex 不内置过滤器，用装饰器包装即可：
+```go
+// 仅慢查询触发
+db.AddHook(SlowOnly(&AlertHook{}, 500*time.Millisecond))
+// SlowOnly / OnError 等装饰器自行实现，几行代码即可
+```
+
 ## 4. 最佳实践与常见陷阱
 
 ### ✅ 推荐做法
@@ -258,4 +265,5 @@ db.AddHook(&MetricsHook{})
 | 类型 | 说明 |
 |------|------|
 | `Hook` 接口 | `BeforeQuery(ctx, *QueryEvent) ctx` + `AfterQuery(ctx, *QueryEvent)` |
-| `QueryEvent` | 包含 Query, Args, StartTime, Duration, Error, OperationType |
+| `QueryEvent` | 包含 Query, Args, StartTime, Duration, Error, OperationType, RowsAffected, LastInsertID |
+| `OpType` | 操作类型枚举：OpQuery/OpExec/OpBegin/OpCommit/OpRollback |

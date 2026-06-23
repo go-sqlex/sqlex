@@ -1292,7 +1292,7 @@ func TestIntegrationMapperFunc(t *testing.T) {
 		// 测试独立 DB 副本的 MapperFunc 不影响原 DB
 		t.Run("IndependentMapper", func(t *testing.T) {
 			// 创建一个新的 DB 连接，使用不同的 Mapper
-			dbCopy := sqlex.NewDb(db.DB, db.DriverName())
+			dbCopy := sqlex.NewDB(db.DB, db.DriverName())
 			dbCopy.MapperFunc(strings.ToUpper)
 
 			// With an uppercase mapper, struct fields need uppercase db tags to match.

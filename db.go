@@ -11,10 +11,9 @@ import (
 // used mostly to automatically bind named queries using the right bindvars.
 type DB struct {
 	*sql.DB
-	driverName string
-	Mapper     *reflectx.Mapper
-	hooks      []Hook
-	strict     bool
+	pipeline
+	Mapper *reflectx.Mapper
+	strict bool
 }
 type Opt func(db *DB)
 
@@ -32,12 +31,10 @@ func WithMapperFunc(mf func(string) string) Opt {
 	}
 }
 
-// NewDb returns a new sqlex DB wrapper for a pre-existing *sql.DB.  The
+// NewDB returns a new sqlex DB wrapper for a pre-existing *sql.DB.  The
 // driverName of the original database is required for named query support.
-//
-//lint:ignore ST1003 changing this would break the package interface.
-func NewDb(db *sql.DB, driverName string, opts ...Opt) *DB {
-	d := &DB{DB: db, driverName: driverName, Mapper: mapper()}
+func NewDB(db *sql.DB, driverName string, opts ...Opt) *DB {
+	d := &DB{DB: db, pipeline: pipeline{driverName: driverName}, Mapper: mapper()}
 	for _, opt := range opts {
 		opt(d)
 	}
@@ -60,7 +57,7 @@ func Open(driverName, dataSourceName string, opts ...Opt) (*DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	d := &DB{DB: db, driverName: driverName, Mapper: mapper()}
+	d := &DB{DB: db, pipeline: pipeline{driverName: driverName}, Mapper: mapper()}
 	for _, opt := range opts {
 		opt(d)
 	}
@@ -154,11 +151,17 @@ func (db *DB) MustBegin() *Tx {
 
 // Beginx begins a transaction and returns an *sqlex.Tx instead of an *sql.Tx.
 func (db *DB) Beginx() (*Tx, error) {
-	tx, err := db.DB.Begin()
+	_, afterFunc, event, err := db.prepare(context.Background(), "", nil, OpBegin)
 	if err != nil {
 		return nil, err
 	}
-	return &Tx{Tx: tx, driverName: db.driverName, Mapper: db.Mapper, hooks: db.hooks, strict: db.strict}, err
+	tx, txErr := db.DB.Begin()
+	event.Error = txErr
+	afterFunc()
+	if txErr != nil {
+		return nil, txErr
+	}
+	return &Tx{Tx: tx, pipeline: db.pipeline, Mapper: db.Mapper, strict: db.strict}, nil
 }
 
 // MustBeginTxx starts a transaction, and panics on error.  Returns an *sqlex.Tx instead
@@ -184,11 +187,17 @@ func (db *DB) MustBeginTxx(ctx context.Context, opts *sql.TxOptions) *Tx {
 // transaction. Tx.Commit will return an error if the context provided to
 // BeginTxx is canceled.
 func (db *DB) BeginTxx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) {
-	tx, err := db.DB.BeginTx(ctx, opts)
+	ctx, afterFunc, event, err := db.prepare(ctx, "", nil, OpBegin)
 	if err != nil {
 		return nil, err
 	}
-	return &Tx{Tx: tx, driverName: db.driverName, Mapper: db.Mapper, hooks: db.hooks, strict: db.strict}, err
+	tx, txErr := db.DB.BeginTx(ctx, opts)
+	event.Error = txErr
+	afterFunc()
+	if txErr != nil {
+		return nil, txErr
+	}
+	return &Tx{Tx: tx, pipeline: db.pipeline, Mapper: db.Mapper, strict: db.strict}, nil
 }
 
 // Queryx queries the database and returns an *sqlex.Rows.
@@ -241,15 +250,16 @@ func (db *DB) NamedQueryContext(ctx context.Context, query string, arg any) (*Ro
 // Overrides sql.DB's ExecContext to integrate Hook logic.
 // Automatically detects slice args and expands IN clauses; zero overhead when no slices are present.
 func (db *DB) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
-	var err error
-	if query, args, err = autoIn(query, args...); err != nil {
+	ctx, afterFunc, event, err := db.prepare(ctx, query, args, OpExec)
+	if err != nil {
 		return nil, err
 	}
-	query = Rebind(BindType(db.driverName), query)
-	event := &QueryEvent{Query: query, Args: args, OperationType: "exec"}
-	ctx, afterFunc := executeHooks(ctx, db.hooks, event)
-	result, err := db.DB.ExecContext(ctx, query, args...)
+	result, err := db.DB.ExecContext(ctx, event.Query, event.Args...)
 	event.Error = err
+	if result != nil {
+		event.RowsAffected, _ = result.RowsAffected()
+		event.LastInsertID, _ = result.LastInsertId()
+	}
 	afterFunc()
 	return result, err
 }
@@ -292,14 +302,11 @@ func (db *DB) PreparexContext(ctx context.Context, query string) (*Stmt, error) 
 // Any placeholder parameters are replaced with supplied args.
 // Automatically detects slice args and expands IN clauses; zero overhead when no slices are present.
 func (db *DB) QueryxContext(ctx context.Context, query string, args ...any) (*Rows, error) {
-	var err error
-	if query, args, err = autoIn(query, args...); err != nil {
+	ctx, afterFunc, event, err := db.prepare(ctx, query, args, OpQuery)
+	if err != nil {
 		return nil, err
 	}
-	query = Rebind(BindType(db.driverName), query)
-	event := &QueryEvent{Query: query, Args: args, OperationType: "query"}
-	ctx, afterFunc := executeHooks(ctx, db.hooks, event)
-	r, err := db.DB.QueryContext(ctx, query, args...)
+	r, err := db.DB.QueryContext(ctx, event.Query, event.Args...)
 	event.Error = err
 	afterFunc()
 	if err != nil {
@@ -312,17 +319,14 @@ func (db *DB) QueryxContext(ctx context.Context, query string, args ...any) (*Ro
 // Any placeholder parameters are replaced with supplied args.
 // Automatically detects slice args and expands IN clauses; zero overhead when no slices are present.
 func (db *DB) QueryRowxContext(ctx context.Context, query string, args ...any) *Row {
-	var err error
-	if query, args, err = autoIn(query, args...); err != nil {
+	ctx, afterFunc, event, err := db.prepare(ctx, query, args, OpQuery)
+	if err != nil {
 		return &Row{err: err, Mapper: db.Mapper, strict: db.strict}
 	}
-	query = Rebind(BindType(db.driverName), query)
-	event := &QueryEvent{Query: query, Args: args, OperationType: "query"}
-	ctx, afterFunc := executeHooks(ctx, db.hooks, event)
-	rows, err := db.DB.QueryContext(ctx, query, args...)
-	event.Error = err
+	rows, qErr := db.DB.QueryContext(ctx, event.Query, event.Args...)
+	event.Error = qErr
 	afterFunc()
-	return &Row{rows: rows, err: err, Mapper: db.Mapper, strict: db.strict}
+	return &Row{rows: rows, err: qErr, Mapper: db.Mapper, strict: db.strict}
 }
 
 // MustExecContext (panic) runs MustExec using this database.
@@ -338,5 +342,5 @@ func (db *DB) Connx(ctx context.Context) (*Conn, error) {
 		return nil, err
 	}
 
-	return &Conn{Conn: conn, driverName: db.driverName, Mapper: db.Mapper, hooks: db.hooks, strict: db.strict}, nil
+	return &Conn{Conn: conn, pipeline: db.pipeline, Mapper: db.Mapper, strict: db.strict}, nil
 }

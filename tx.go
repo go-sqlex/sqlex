@@ -14,10 +14,9 @@ import (
 // Do not share the same Tx instance across goroutines for concurrent queries.
 type Tx struct {
 	*sql.Tx
-	driverName string
-	Mapper     *reflectx.Mapper
-	hooks      []Hook
-	strict     bool
+	pipeline
+	Mapper *reflectx.Mapper
+	strict bool
 }
 
 // DriverName returns the driverName used by the DB which began this transaction.
@@ -231,14 +230,11 @@ func (tx *Tx) MustExecContext(ctx context.Context, query string, args ...any) sq
 // Any placeholder parameters are replaced with supplied args.
 // Automatically detects slice args and expands IN clauses; zero overhead when no slices are present.
 func (tx *Tx) QueryxContext(ctx context.Context, query string, args ...any) (*Rows, error) {
-	var err error
-	if query, args, err = autoIn(query, args...); err != nil {
+	ctx, afterFunc, event, err := tx.prepare(ctx, query, args, OpQuery)
+	if err != nil {
 		return nil, err
 	}
-	query = Rebind(BindType(tx.driverName), query)
-	event := &QueryEvent{Query: query, Args: args, OperationType: "query"}
-	ctx, afterFunc := executeHooks(ctx, tx.hooks, event)
-	r, err := tx.Tx.QueryContext(ctx, query, args...)
+	r, err := tx.Tx.QueryContext(ctx, event.Query, event.Args...)
 	event.Error = err
 	afterFunc()
 	if err != nil {
@@ -264,17 +260,14 @@ func (tx *Tx) GetContext(ctx context.Context, dest any, query string, args ...an
 // Any placeholder parameters are replaced with supplied args.
 // Automatically detects slice args and expands IN clauses; zero overhead when no slices are present.
 func (tx *Tx) QueryRowxContext(ctx context.Context, query string, args ...any) *Row {
-	var err error
-	if query, args, err = autoIn(query, args...); err != nil {
+	ctx, afterFunc, event, err := tx.prepare(ctx, query, args, OpQuery)
+	if err != nil {
 		return &Row{err: err, Mapper: tx.Mapper, strict: tx.strict}
 	}
-	query = Rebind(BindType(tx.driverName), query)
-	event := &QueryEvent{Query: query, Args: args, OperationType: "query"}
-	ctx, afterFunc := executeHooks(ctx, tx.hooks, event)
-	rows, err := tx.Tx.QueryContext(ctx, query, args...)
-	event.Error = err
+	rows, qErr := tx.Tx.QueryContext(ctx, event.Query, event.Args...)
+	event.Error = qErr
 	afterFunc()
-	return &Row{rows: rows, err: err, Mapper: tx.Mapper, strict: tx.strict}
+	return &Row{rows: rows, err: qErr, Mapper: tx.Mapper, strict: tx.strict}
 }
 
 // NamedQueryContext within a transaction and context.
@@ -287,15 +280,16 @@ func (tx *Tx) NamedQueryContext(ctx context.Context, query string, arg any) (*Ro
 // Overrides sql.Tx's ExecContext to integrate Hook logic.
 // Automatically detects slice args and expands IN clauses; zero overhead when no slices are present.
 func (tx *Tx) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
-	var err error
-	if query, args, err = autoIn(query, args...); err != nil {
+	ctx, afterFunc, event, err := tx.prepare(ctx, query, args, OpExec)
+	if err != nil {
 		return nil, err
 	}
-	query = Rebind(BindType(tx.driverName), query)
-	event := &QueryEvent{Query: query, Args: args, OperationType: "exec"}
-	ctx, afterFunc := executeHooks(ctx, tx.hooks, event)
-	result, err := tx.Tx.ExecContext(ctx, query, args...)
+	result, err := tx.Tx.ExecContext(ctx, event.Query, event.Args...)
 	event.Error = err
+	if result != nil {
+		event.RowsAffected, _ = result.RowsAffected()
+		event.LastInsertID, _ = result.LastInsertId()
+	}
 	afterFunc()
 	return result, err
 }
@@ -316,27 +310,26 @@ func (tx *Tx) NamedExecContext(ctx context.Context, query string, arg any) (sql.
 // --- Enhanced transaction management methods (originally tx_ext.go) ---
 
 // CloseWithErr automatically commits or rolls back the transaction based on the error value.
-// If err is nil, the transaction is committed; otherwise, it is rolled back.
-// Commit/Rollback failures are reported via Hook.
+// Whether the commit or rollback succeeds or fails, the result is reported via Hook.
 func (tx *Tx) CloseWithErr(err error) {
 	if err != nil {
 		if rbErr := tx.Rollback(); rbErr != nil {
-			tx.logTxError("rollback", rbErr)
+			tx.fireTxHook(OpRollback, rbErr)
+			return
 		}
-	} else {
-		if cmErr := tx.Commit(); cmErr != nil {
-			tx.logTxError("commit", cmErr)
-		}
+		tx.fireTxHook(OpRollback, err)
+		return
 	}
+	tx.fireTxHook(OpCommit, tx.Commit())
 }
 
-// logTxError reports transaction operation (commit/rollback) failures via Hook.
-func (tx *Tx) logTxError(op string, err error) {
+// fireTxHook reports a transaction operation (commit/rollback) via Hook. A nil err indicates success.
+func (tx *Tx) fireTxHook(op OpType, err error) {
 	if len(tx.hooks) == 0 {
 		return
 	}
 	event := &QueryEvent{
-		Query:         "TX " + op,
+		Query:         "TX " + string(op),
 		OperationType: op,
 		Error:         err,
 	}

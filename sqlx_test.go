@@ -1171,7 +1171,7 @@ func TestUsage(t *testing.T) {
 
 		// create a copy and change the mapper, then verify the copy behaves
 		// differently from the original.
-		dbCopy := NewDb(db.DB, db.DriverName())
+		dbCopy := NewDB(db.DB, db.DriverName())
 		dbCopy.MapperFunc(strings.ToUpper)
 		err = dbCopy.Get(&rsa, "SELECT * FROM capplace;")
 		if err != nil {

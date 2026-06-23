@@ -161,6 +161,13 @@ db.AddHook(&MetricsHook{})
 // Multiple Hooks: BeforeQuery forward order, AfterQuery reverse order (onion model)
 ```
 
+**Conditional filtering**: sqlex does not ship a built-in filter; use decorators:
+```go
+// Only fire on slow queries
+db.AddHook(SlowOnly(&AlertHook{}, 500*time.Millisecond))
+// SlowOnly / OnError etc. are trivial to implement yourself
+```
+
 ## 4. Best Practices and Common Pitfalls
 
 ### ✅ Recommended
@@ -261,4 +268,5 @@ db.AddHook(&MetricsHook{})
 | Type | Description |
 |------|-------------|
 | `Hook` interface | `BeforeQuery(ctx, *QueryEvent) ctx` + `AfterQuery(ctx, *QueryEvent)` |
-| `QueryEvent` | Contains Query, Args, StartTime, Duration, Error, OperationType |
+| `QueryEvent` | Contains Query, Args, StartTime, Duration, Error, OperationType, RowsAffected, LastInsertID |
+| `OpType` | Operation type enum: OpQuery/OpExec/OpBegin/OpCommit/OpRollback |

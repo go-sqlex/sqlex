@@ -33,7 +33,7 @@ func TestHookOnionModel(t *testing.T) {
 		&onionTestHook{name: "C", before: &beforeCalls, after: &afterCalls},
 	}
 
-	event := &QueryEvent{Query: "SELECT 1", OperationType: "query"}
+	event := &QueryEvent{Query: "SELECT 1", OperationType: OpQuery}
 	ctx := context.Background()
 
 	ctx, afterFunc := executeHooks(ctx, hooks, event)
@@ -67,7 +67,7 @@ func TestHookOnionModel(t *testing.T) {
 
 // TestHookZeroHooks verifies that zero Hooks do not cause a panic.
 func TestHookZeroHooks(t *testing.T) {
-	event := &QueryEvent{Query: "SELECT 1", OperationType: "query"}
+	event := &QueryEvent{Query: "SELECT 1", OperationType: OpQuery}
 	ctx := context.Background()
 
 	ctx, afterFunc := executeHooks(ctx, nil, event)
@@ -84,7 +84,7 @@ func TestHookSingleHook(t *testing.T) {
 		&onionTestHook{name: "only", before: &beforeCalls, after: &afterCalls},
 	}
 
-	event := &QueryEvent{Query: "SELECT 1", OperationType: "query"}
+	event := &QueryEvent{Query: "SELECT 1", OperationType: OpQuery}
 	ctx := context.Background()
 	ctx, afterFunc := executeHooks(ctx, hooks, event)
 	_ = ctx

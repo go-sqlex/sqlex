@@ -444,7 +444,7 @@ func TestPGHook(t *testing.T) {
 
 	t.Run("BasicHook", func(t *testing.T) {
 		// Create independent DB wrapper to avoid polluting global pgdb hooks
-		db := sqlex.NewDb(pgdb.DB, pgdb.DriverName())
+		db := sqlex.NewDB(pgdb.DB, pgdb.DriverName())
 		hook := &testHook{}
 		db.AddHook(hook)
 
@@ -484,7 +484,7 @@ func TestPGHook(t *testing.T) {
 	})
 
 	t.Run("OnionModel", func(t *testing.T) {
-		db := sqlex.NewDb(pgdb.DB, pgdb.DriverName())
+		db := sqlex.NewDB(pgdb.DB, pgdb.DriverName())
 		var order []string
 		var mu sync.Mutex
 
@@ -513,7 +513,7 @@ func TestPGHook(t *testing.T) {
 	})
 
 	t.Run("HookInheritedByTx", func(t *testing.T) {
-		db := sqlex.NewDb(pgdb.DB, pgdb.DriverName())
+		db := sqlex.NewDB(pgdb.DB, pgdb.DriverName())
 		hook := &testHook{}
 		db.AddHook(hook)
 
@@ -545,7 +545,7 @@ func TestPGHook(t *testing.T) {
 	})
 
 	t.Run("HookCapturesError", func(t *testing.T) {
-		db := sqlex.NewDb(pgdb.DB, pgdb.DriverName())
+		db := sqlex.NewDB(pgdb.DB, pgdb.DriverName())
 
 		var capturedError error
 		var capturedDuration time.Duration
@@ -1631,7 +1631,7 @@ func TestPGConcurrency(t *testing.T) {
 	})
 
 	t.Run("ConcurrentHooks", func(t *testing.T) {
-		db := sqlex.NewDb(pgdb.DB, pgdb.DriverName())
+		db := sqlex.NewDB(pgdb.DB, pgdb.DriverName())
 		var hookCallCount int32
 
 		hook := &funcHook{

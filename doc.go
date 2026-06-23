@@ -6,12 +6,12 @@
 //
 // # Core Enhancements
 //
-//   - Hook aspects: onion-model SQL interceptors supporting logging, monitoring, and tracing
+//   - Hook aspects: onion-model SQL interceptors covering query/exec/transaction lifecycle
 //   - JSONValue[T]: generic JSON column type, NULL-safe
 //   - Auto Rebind: all query methods use ? placeholders uniformly, auto-converting to target database format
 //   - Transparent IN: Select/Get/NamedGet/NamedSelect auto-expand slice parameters
 //   - StrictMode: optional strict mode detecting query result / struct field mismatches
-//   - CloseWithErr: auto-commits or rolls back transactions based on error; failures reported via Hook
+//   - CloseWithErr: auto-commits or rolls back transactions based on error; result reported via Hook
 //   - NamedExt/BindExt: unified interfaces, DB and Tx are interchangeable
 //   - Functional Options: Open/Connect support WithHooks/WithStrictMode etc.
 //

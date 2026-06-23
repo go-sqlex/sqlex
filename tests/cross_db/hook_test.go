@@ -19,7 +19,7 @@ func TestCrossDBHookBasic(t *testing.T) {
 		seedCrossData(db, t)
 
 		// 创建独立 DB 包装避免污染全局 hooks
-		dbCopy := sqlex.NewDb(db.DB, db.DriverName())
+		dbCopy := sqlex.NewDB(db.DB, db.DriverName())
 		hook := &crossTestHook{}
 		dbCopy.AddHook(hook)
 
@@ -65,7 +65,7 @@ func TestCrossDBHookOnion(t *testing.T) {
 		crossDBOnly(t)
 		seedCrossData(db, t)
 
-		dbCopy := sqlex.NewDb(db.DB, db.DriverName())
+		dbCopy := sqlex.NewDB(db.DB, db.DriverName())
 		var order []string
 		var mu sync.Mutex
 
@@ -105,7 +105,7 @@ func TestCrossDBHookInheritTx(t *testing.T) {
 		crossDBOnly(t)
 		seedCrossData(db, t)
 
-		dbCopy := sqlex.NewDb(db.DB, db.DriverName())
+		dbCopy := sqlex.NewDB(db.DB, db.DriverName())
 		hook := &crossTestHook{}
 		dbCopy.AddHook(hook)
 
@@ -143,7 +143,7 @@ func TestCrossDBHookInheritConn(t *testing.T) {
 		crossDBOnly(t)
 		seedCrossData(db, t)
 
-		dbCopy := sqlex.NewDb(db.DB, db.DriverName())
+		dbCopy := sqlex.NewDB(db.DB, db.DriverName())
 		hook := &crossTestHook{}
 		dbCopy.AddHook(hook)
 
@@ -180,7 +180,7 @@ func TestCrossDBHookDuration(t *testing.T) {
 		crossDBOnly(t)
 		seedCrossData(db, t)
 
-		dbCopy := sqlex.NewDb(db.DB, db.DriverName())
+		dbCopy := sqlex.NewDB(db.DB, db.DriverName())
 		hook := &crossTestHook{}
 		dbCopy.AddHook(hook)
 
@@ -215,7 +215,7 @@ func TestCrossDBHookError(t *testing.T) {
 	runWithSchema(crossSchema, t, func(db *sqlex.DB, t *testing.T, now string) {
 		crossDBOnly(t)
 
-		dbCopy := sqlex.NewDb(db.DB, db.DriverName())
+		dbCopy := sqlex.NewDB(db.DB, db.DriverName())
 		hook := &crossTestHook{}
 		dbCopy.AddHook(hook)
 
@@ -248,7 +248,7 @@ func TestCrossDBNoHook(t *testing.T) {
 		seedCrossData(db, t)
 
 		// 使用不带 Hook 的 DB
-		dbCopy := sqlex.NewDb(db.DB, db.DriverName())
+		dbCopy := sqlex.NewDB(db.DB, db.DriverName())
 		// 不注册任何 Hook
 
 		ctx := context.Background()

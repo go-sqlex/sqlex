@@ -127,7 +127,7 @@ func TestConcurrentHook(t *testing.T) {
 		crossDBOnly(t)
 		seedCrossData(db, t)
 
-		dbCopy := sqlex.NewDb(db.DB, db.DriverName())
+		dbCopy := sqlex.NewDB(db.DB, db.DriverName())
 		hook := &crossTestHook{}
 		dbCopy.AddHook(hook)
 

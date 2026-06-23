@@ -10,10 +10,9 @@ import (
 // Conn is a wrapper around sql.Conn with extra functionality
 type Conn struct {
 	*sql.Conn
-	driverName string
-	Mapper     *reflectx.Mapper
-	hooks      []Hook
-	strict     bool
+	pipeline
+	Mapper *reflectx.Mapper
+	strict bool
 }
 
 // DriverName returns the driverName used by the DB which created this Conn.
@@ -58,11 +57,17 @@ func (c *Conn) BindNamed(query string, arg any) (string, []any, error) {
 // BeginTxx begins a transaction and returns an *sqlex.Tx instead of an
 // *sql.Tx.
 func (c *Conn) BeginTxx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) {
-	tx, err := c.Conn.BeginTx(ctx, opts)
+	ctx, afterFunc, event, err := c.prepare(ctx, "", nil, OpBegin)
 	if err != nil {
 		return nil, err
 	}
-	return &Tx{Tx: tx, driverName: c.driverName, Mapper: c.Mapper, hooks: c.hooks, strict: c.strict}, err
+	tx, txErr := c.Conn.BeginTx(ctx, opts)
+	event.Error = txErr
+	afterFunc()
+	if txErr != nil {
+		return nil, txErr
+	}
+	return &Tx{Tx: tx, pipeline: c.pipeline, Mapper: c.Mapper, strict: c.strict}, nil
 }
 
 // SelectContext using this Conn.
@@ -87,14 +92,11 @@ func (c *Conn) PreparexContext(ctx context.Context, query string) (*Stmt, error)
 // Any placeholder parameters are replaced with supplied args.
 // Automatically detects slice args and expands IN clauses; zero overhead when no slices are present.
 func (c *Conn) QueryxContext(ctx context.Context, query string, args ...any) (*Rows, error) {
-	var err error
-	if query, args, err = autoIn(query, args...); err != nil {
+	ctx, afterFunc, event, err := c.prepare(ctx, query, args, OpQuery)
+	if err != nil {
 		return nil, err
 	}
-	query = Rebind(BindType(c.driverName), query)
-	event := &QueryEvent{Query: query, Args: args, OperationType: "query"}
-	ctx, afterFunc := executeHooks(ctx, c.hooks, event)
-	r, err := c.Conn.QueryContext(ctx, query, args...)
+	r, err := c.Conn.QueryContext(ctx, event.Query, event.Args...)
 	event.Error = err
 	afterFunc()
 	if err != nil {
@@ -107,17 +109,14 @@ func (c *Conn) QueryxContext(ctx context.Context, query string, args ...any) (*R
 // Any placeholder parameters are replaced with supplied args.
 // Automatically detects slice args and expands IN clauses; zero overhead when no slices are present.
 func (c *Conn) QueryRowxContext(ctx context.Context, query string, args ...any) *Row {
-	var err error
-	if query, args, err = autoIn(query, args...); err != nil {
+	ctx, afterFunc, event, err := c.prepare(ctx, query, args, OpQuery)
+	if err != nil {
 		return &Row{err: err, Mapper: c.Mapper, strict: c.strict}
 	}
-	query = Rebind(BindType(c.driverName), query)
-	event := &QueryEvent{Query: query, Args: args, OperationType: "query"}
-	ctx, afterFunc := executeHooks(ctx, c.hooks, event)
-	rows, err := c.Conn.QueryContext(ctx, query, args...)
-	event.Error = err
+	rows, qErr := c.Conn.QueryContext(ctx, event.Query, event.Args...)
+	event.Error = qErr
 	afterFunc()
-	return &Row{rows: rows, err: err, Mapper: c.Mapper, strict: c.strict}
+	return &Row{rows: rows, err: qErr, Mapper: c.Mapper, strict: c.strict}
 }
 
 // NamedQueryContext using this Conn.
@@ -130,15 +129,16 @@ func (c *Conn) NamedQueryContext(ctx context.Context, query string, arg any) (*R
 // Overrides sql.Conn's ExecContext to integrate Hook logic.
 // Automatically detects slice args and expands IN clauses; zero overhead when no slices are present.
 func (c *Conn) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
-	var err error
-	if query, args, err = autoIn(query, args...); err != nil {
+	ctx, afterFunc, event, err := c.prepare(ctx, query, args, OpExec)
+	if err != nil {
 		return nil, err
 	}
-	query = Rebind(BindType(c.driverName), query)
-	event := &QueryEvent{Query: query, Args: args, OperationType: "exec"}
-	ctx, afterFunc := executeHooks(ctx, c.hooks, event)
-	result, err := c.Conn.ExecContext(ctx, query, args...)
+	result, err := c.Conn.ExecContext(ctx, event.Query, event.Args...)
 	event.Error = err
+	if result != nil {
+		event.RowsAffected, _ = result.RowsAffected()
+		event.LastInsertID, _ = result.LastInsertId()
+	}
 	afterFunc()
 	return result, err
 }
