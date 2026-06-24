@@ -16,9 +16,18 @@ lint:
 	go vet ./...
 	$(GOPATH_BIN)/staticcheck -checks=all ./...
 
-# Run before committing: ensures code is properly formatted and passes lint.
+
+# Run before committing: auto-fix + check.
+prep: fix check
+
+# Check formatting + lint (does not modify files).
 check: fmt lint
 	@echo "All checks passed."
+
+# Auto-fix formatting issues.
+fix:
+	gofmt -w .
+	@echo "Formatting fixed."
 
 fmt:
 	gofmt -d . | tee /dev/stderr | grep -q . && exit 1 || true
