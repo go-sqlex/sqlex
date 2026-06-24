@@ -38,6 +38,7 @@ environ
 # Go build artifacts
 bin/
 vendor/
+cover/
 *.test
 *.prof
 *.out

@@ -15,7 +15,7 @@ Thank you for your interest in contributing to sqlex! We welcome contributions f
 Run this single command before every commit — it auto-formats, then checks formatting and lint:
 
 ```bash
-make prep
+make ready
 ```
 
 If you just want to see what's wrong without modifying files, use `make check`.
@@ -25,7 +25,7 @@ If you just want to see what's wrong without modifying files, use `make check`.
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/my-change`)
 3. Make your changes
-4. Run `make prep` to fix formatting + run checks
+4. Run `make ready` to fix formatting + run checks
 5. Add or update tests as needed; run `go test -v -race -count=1 ./...`
 6. Update [CHANGELOG.md](CHANGELOG.md) with a brief note under the next version
 7. Commit with a clear message
@@ -34,7 +34,7 @@ If you just want to see what's wrong without modifying files, use `make check`.
 ### Code Style
 
 - Follow standard Go conventions ([Effective Go](https://go.dev/doc/effective_go))
-- Run `make prep` before committing (covers `gofmt` + `go vet` + `staticcheck`)
+- Run `make ready` before committing (covers `gofmt` + `go vet` + `staticcheck`)
 - Doc comments should be in English
 - Keep line width ≤ 180 columns
 
