@@ -42,6 +42,16 @@ If you just want to see what's wrong without modifying files, use `make check`.
 
 All new features must include tests. Bug fixes should include a regression test.
 
+#### Quick commands
+
+| Command | What it does |
+|---------|-------------|
+| `make test` | Full test suite with race detection |
+| `make test-cover` | Full test + coverage HTML report in `cover/` |
+| `FUNC=TestName make test-func` | Run a single test function |
+
+> See all available commands with `make help`.
+
 #### Unit Tests (no database)
 
 Root-level `*_test.go` files test isolated logic (lexer, bind, hook, named parameters). No database required:
@@ -77,21 +87,20 @@ SQLX_POSTGRES_DSN=skip SQLX_SQLSERVER_DSN=skip go test -v -count=1 ./tests/cross
 Always run race tests before submitting:
 
 ```bash
-make test-race
-# equivalent: go test -v -race -count=1 ./...
+make test
 ```
 
 #### Running a Single Test
 
 ```bash
-go test -v -run TestDB_Queryx ./tests/cross_db/
+FUNC=TestDB_Queryx make test-func
 ```
 
 #### Coverage
 
 ```bash
-go test -coverprofile=coverage.out ./...
-go tool cover -html=coverage.out
+make test-cover
+open cover/cover.html
 ```
 
 ## Development Setup
