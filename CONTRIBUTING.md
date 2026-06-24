@@ -39,10 +39,59 @@ If you just want to see what's wrong without modifying files, use `make check`.
 
 ### Testing
 
-- All new features must include tests
-- Bug fixes should include a regression test
-- Unit tests should not require a database
-- Integration tests require a running database; use `SQLX_*_DSN=skip` to skip specific drivers
+All new features must include tests. Bug fixes should include a regression test.
+
+#### Unit Tests (no database)
+
+Root-level `*_test.go` files test isolated logic (lexer, bind, hook, named parameters). No database required:
+
+```bash
+go test -v -count=1 .
+```
+
+#### Integration Tests (requires database)
+
+Tests under `tests/cross_db/` exercise real database drivers. Set up credentials first:
+
+```bash
+cp .env.test.example .env.test   # edit with your credentials
+go test -v -count=1 ./tests/cross_db/
+```
+
+To skip a driver you don't have running, set `skip` in `.env.test`:
+
+```bash
+SQLX_POSTGRES_DSN=skip
+SQLX_SQLSERVER_DSN=skip
+```
+
+Or inline:
+
+```bash
+SQLX_POSTGRES_DSN=skip SQLX_SQLSERVER_DSN=skip go test -v -count=1 ./tests/cross_db/
+```
+
+#### Race Detection
+
+Always run race tests before submitting:
+
+```bash
+make test-race
+# equivalent: go test -v -race -count=1 ./...
+```
+
+#### Running a Single Test
+
+```bash
+go test -v -run TestDB_Queryx ./tests/cross_db/
+```
+
+#### Coverage
+
+```bash
+go test -coverprofile=coverage.out ./...
+go tool cover -html=coverage.out
+```
 
 ## Development Setup
 
