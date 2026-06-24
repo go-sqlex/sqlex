@@ -27,8 +27,9 @@ If you just want to see what's wrong without modifying files, use `make check`.
 3. Make your changes
 4. Run `make prep` to fix formatting + run checks
 5. Add or update tests as needed; run `go test -v -race -count=1 ./...`
-6. Commit with a clear message
-7. Submit a pull request
+6. Update [CHANGELOG.md](CHANGELOG.md) with a brief note under the next version
+7. Commit with a clear message
+8. Submit a pull request
 
 ### Code Style
 

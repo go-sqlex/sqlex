@@ -765,3 +765,6 @@ go test -bench=. -benchmem -run=NoSuch -benchtime=2s .
 MIT License
 
 基于 [jmoiron/sqlx](https://github.com/jmoiron/sqlx) 项目进行的现代化增强，感谢原作者 Jason Moiron 的出色工作。
+
+请在提交 Pull Request 前阅读我们的[贡献指南](CONTRIBUTING.md)。  
+版本变更请查看 [CHANGELOG.md](CHANGELOG.md)。

@@ -602,3 +602,6 @@ go test -v -race -count=1 ./...
 [MIT License](LICENSE)
 
 Based on [jmoiron/sqlx](https://github.com/jmoiron/sqlx) — thanks to Jason Moiron for the excellent work.
+
+Please read our [Contributing Guide](CONTRIBUTING.md) before submitting a pull request.  
+See [CHANGELOG.md](CHANGELOG.md) for version history.
