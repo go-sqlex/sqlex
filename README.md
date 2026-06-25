@@ -29,27 +29,6 @@ What you get for free after migrating:
 
 → [Migration Guide](#migration-from-jmoironsqlx)
 
-## Table of Contents
-
-- [Installation](#installation)
-- [Migration from jmoiron/sqlx](#migration-from-jmoironsqlx)
-- [Quick Start](#quick-start)
-- [New Features](#new-features)
-- [Usage Examples](#usage-examples)
-  - [Basic CRUD](#basic-crud)
-  - [Named Parameter Queries](#named-parameter-queries)
-  - [IN Queries](#in-queries)
-  - [Prepared Statements](#prepared-statements)
-  - [Transaction Management](#transaction-management)
-  - [JSONValue[T]](#jsonvaluet)
-  - [Hook Aspects](#hook-aspects)
-  - [StrictMode](#strictmode)
-  - [NamedExt / BindExt Unified Interfaces](#unified-interfaces)
-- [Comparison with jmoiron/sqlx](#comparison-with-jmoironsqlx)
-- [Bug Fixes & Improvements](#bug-fixes--improvements)
-- [Performance](#performance)
-- [License](#license)
-
 ## Installation
 
 ```bash
@@ -575,28 +554,79 @@ sqlex fixes the following known issues from jmoiron/sqlx:
 ## Testing
 
 ```bash
-# Main package unit tests (no DB dependency)
+# 1) Main package unit tests (no DB dependency, fastest)
 go test -count=1 -timeout=120s .
 
-# Cross-DB tests (SQLite only, no external dependencies)
+# 2) cross_db MySQL only (isolate PG/SQLite for debugging)
+SQLX_POSTGRES_DSN=skip SQLX_SQLITE_DSN=skip \
+  go test -count=1 -timeout=300s ./tests/cross_db/
+
+# 3) cross_db PostgreSQL only
+SQLX_MYSQL_DSN=skip SQLX_SQLITE_DSN=skip \
+  go test -count=1 -timeout=300s ./tests/cross_db/
+
+# 4) cross_db SQLite only (no external dependencies)
 SQLX_MYSQL_DSN=skip SQLX_POSTGRES_DSN=skip \
   go test -count=1 -timeout=120s ./tests/cross_db/
 
-# All tests
-go test -count=1 -timeout=300s ./...
+# 5) cross_db all drivers (CI recommended)
+go test -count=1 -timeout=300s ./tests/cross_db/
 
-# With race detector
-go test -v -race -count=1 ./...
+# 6) integration tests
+go test -count=1 -timeout=120s ./tests/integration/
+
+# 7) pg-specific tests (PostgreSQL unique features)
+go test -count=1 -timeout=120s ./tests/pg/
+
+# 8) types / reflectx subpackages
+go test -count=1 -timeout=60s ./types/ ./reflectx/
 ```
 
-**DSN configuration**: Write complete DSNs directly in `.env.test` using the `SQLX_*_DSN` namespace. Set to `skip` to skip tests for that driver. SQLite defaults to `:memory:`.
+**Why run per-driver**: A single `go test ./...` runs all drivers at once, making it hard to isolate driver-specific failures. Per-driver runs enable quick bisection.
+
+**DSN configuration**: Write complete DSNs in `.env.test` using the `SQLX_*_DSN` namespace. Set to `skip` to skip that driver. SQLite defaults to `:memory:`.
+
+| Env var | Value | Behavior |
+|---------|-------|----------|
+| `SQLX_MYSQL_DSN` | Full DSN | Uses this DSN |
+| `SQLX_MYSQL_DSN` | `skip` or empty | Skips MySQL tests |
+| `SQLX_POSTGRES_DSN` | Same | |
+| `SQLX_SQLITE_DSN` | Same (default `:memory:`) | |
+
+### Single test debugging
+
+```bash
+# Run a single test function
+go test -count=1 -timeout=60s -run "TestNextPlaceholder" -v .
+
+# Run a single sub-test
+go test -count=1 -timeout=60s -run "TestNextPlaceholder/multiline_IN" -v .
+
+# Race detection
+go test -count=1 -race -timeout=180s .
+
+# Coverage
+go test -count=1 -cover -coverprofile=cover.out -timeout=120s .
+go tool cover -html=cover.out
+
+# Benchmarks
+go test -bench=. -benchmem -run=NoSuch -benchtime=2s .
+```
 
 ## Performance
 
+- **Prepared statements**: `Preparex`/`PreparexContext` auto-Rebinds, unifying `?` placeholders regardless of database driver
 - **Zero-overhead principle**: No Hook overhead when unregistered; auto-Rebind is a no-op for `QUESTION`-type drivers (MySQL/SQLite)
+- **Auto Rebind**: All query methods always perform Rebind. For MySQL/SQLite (already `?`), Rebind returns the original string; for PostgreSQL etc., if the query has no `?` (e.g., already `$1`), a fast path returns immediately. Double Rebind is safe and zero-cost
 - **Slice arg detection**: `needsInRewrite` uses reflection type checks (nanosecond-level for non-slice args)
 - **Mapper caching**: Field mapping results cached after first use
 - **Hook execution**: Hooks run synchronously; use lightweight operations or async for heavy ones
+
+### About NameMapper
+
+`NameMapper` is a global variable that controls field-name-to-column-name mapping, defaulting to `strings.ToLower`.
+
+> **Concurrency warning**: `NameMapper` reads/writes are not concurrency-safe. Set it only in `init()`. Modifying at runtime may cause data races. For runtime per-instance mapping, use `DB.MapperFunc()`.
 
 ## License
 

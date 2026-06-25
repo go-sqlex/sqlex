@@ -1,5 +1,9 @@
 [English](README.md) | **中文**
 
+[![CI](https://github.com/go-sqlex/sqlex/actions/workflows/ci.yml/badge.svg)](https://github.com/go-sqlex/sqlex/actions/workflows/ci.yml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/go-sqlex/sqlex)](https://goreportcard.com/report/github.com/go-sqlex/sqlex)
+[![GoDoc](https://pkg.go.dev/badge/github.com/go-sqlex/sqlex)](https://pkg.go.dev/github.com/go-sqlex/sqlex)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Mentioned in Awesome Go](https://awesome.re/mentioned-badge.svg)](https://github.com/avelino/awesome-go)
 
 # sqlex
@@ -24,27 +28,6 @@
 - 🛡️ **StrictMode** — 默认宽松（与 sqlx `Unsafe()` 一致），可选开启严格模式辅助调试。
 
 → [迁移指南](#从-jmoironsqlx-迁移)
-
-## 目录
-
-- [安装](#安装)
-- [从 jmoiron/sqlx 迁移](#从-jmoironsqlx-迁移)
-- [快速开始](#快速开始)
-- [新增功能](#新增功能)
-- [使用示例](#使用示例)
-  - [基础 CRUD](#基础-crud)
-  - [命名参数查询](#命名参数查询)
-  - [IN 查询](#in-查询)
-  - [预编译语句](#预编译语句)
-  - [事务管理](#事务管理)
-  - [JSONValue[T]](#jsonvaluet)
-  - [Hook 切面](#hook-切面)
-  - [StrictMode 严格模式](#strictmode-严格模式)
-  - [NamedExt 统一接口](#统一接口)
-- [与 jmoiron/sqlx 对比](#与-jmoironsqlx-对比)
-- [Bug 修复与优化](#bug-修复与优化)
-- [性能说明](#性能说明)
-- [许可证](#许可证)
 
 ## 安装
 
@@ -633,12 +616,8 @@ sqlex 在 jmoiron/sqlx 基础上修复了以下已知问题：
 
 ## 测试
 
-### 运行测试
-
-> sqlex 的测试覆盖**多包 × 多驱动 × 多场景**，必须按驱动分别跑回归才能确保改动安全。下面是**标准验收套件**（提交前完整跑一遍约 4-5 分钟）。
-
 ```bash
-# 1) 主包白盒单测（无 DB 依赖，最快）
+# 1) 主包单元测试（无 DB 依赖，最快）
 go test -count=1 -timeout=120s .
 
 # 2) cross_db 仅 MySQL（隔离 PG/SQLite，方便定位）
@@ -666,37 +645,16 @@ go test -count=1 -timeout=120s ./tests/pg/
 go test -count=1 -timeout=60s ./types/ ./reflectx/
 ```
 
-**为什么必须按驱动分别跑**：
-
-- 一把 `go test ./...` 会把 MySQL/PG/SQLite 一起跑，无法定位"某改动只在 PG 下挂"这类问题
-- 分驱动跑能快速二分定位 bug 所在的驱动
-- CI 配置时可以拆成并行 job，缩短反馈时间
+**为什么必须按驱动分别跑**：一把 `go test ./...` 会把 MySQL/PG/SQLite 一起跑，无法定位"某改动只在 PG 下挂"这类问题。分驱动跑能快速二分定位 bug 所在的驱动。
 
 **DSN 配置**：在项目根 `.env.test` 中直接写入完整 DSN，使用 `SQLX_*_DSN` 命名空间。也可以命令行直接覆盖。设为 `skip` 即跳过该驱动相关测试。SQLite 默认用 `:memory:`。
 
-**控制变量速查**：
-
 | 环境变量 | 设置 | 行为 |
-|---|---|---|
+|---------|------|------|
 | `SQLX_MYSQL_DSN` | 完整 DSN | 用此 DSN |
 | `SQLX_MYSQL_DSN` | `skip` 或空 | 跳过 MySQL 测试 |
 | `SQLX_POSTGRES_DSN` | 同上 | |
 | `SQLX_SQLITE_DSN` | 同上（默认 `:memory:`） | |
-
-**预期耗时**：
-
-| 步骤 | 耗时 | 必须通过 |
-|---|---|---|
-| 1. 主包 | ~45s | ✅ |
-| 2. cross_db (MySQL) | ~45s | ✅ |
-| 3. cross_db (PostgreSQL) | ~50s | ✅ |
-| 4. cross_db (SQLite) | <1s | ✅ |
-| 5. cross_db 三驱动一起 | ~95s | ✅ |
-| 6. integration | ~17s | ✅ |
-| 7. pg | ~10s | ✅ |
-| 8. types + reflectx | ~1.5s | ✅ |
-
-**总计约 4-5 分钟**。建议提交前完整跑一遍。
 
 ### 单点调试与定位
 
@@ -707,7 +665,7 @@ go test -count=1 -timeout=60s -run "TestNextPlaceholder" -v .
 # 跑单个 sub-test
 go test -count=1 -timeout=60s -run "TestNextPlaceholder/multiline_IN" -v .
 
-# Race 检测（gomonkey 测试不能用，普通测试推荐）
+# Race 检测
 go test -count=1 -race -timeout=180s .
 
 # 覆盖率
@@ -717,35 +675,6 @@ go tool cover -html=cover.out
 # Bench（仅跑 bench，不跑普通测试）
 go test -bench=. -benchmem -run=NoSuch -benchtime=2s .
 ```
-
-### 测试目录结构
-
-| 目录/文件 | 说明 |
-|-----------|------|
-| `*_test.go`（根目录） | 白盒单元测试，访问包内部未导出符号 |
-| `tests/integration/` | **通用集成测试**（黑盒），通过公开 API 验证 CRUD、Hook、事务等功能（SQLite + PostgreSQL + MySQL） |
-| `tests/pg/` | **PostgreSQL 专用集成测试**（黑盒），覆盖 PG 特有功能（JSONB、数组、`::` 类型转换、窗口函数等） |
-| `tests/cross_db/` | **跨库集成测试**（黑盒），仅通过公开 API 验证 MySQL + PostgreSQL 兼容性 |
-| `reflectx/reflect_test.go` | reflectx 子包自有测试 |
-| `types/*_test.go` | types 子包自有测试（JSONValue、NullTypes） |
-| `testutil/` | 测试环境工具包（环境变量加载、DSN 拼装） |
-
-### 测试覆盖范围
-
-| 模块 | 覆盖内容 |
-|------|----------|
-| **命名参数解析** | 30+ 场景：Unicode、字符串字面量、注释、`::` 双冒号、`:=` 赋值、转义引号、双引号标识符、MySQL 反引号标识符、PG dollar-quoted string、同名参数复用、缺失容错 |
-| **Rebind 绑定转换** | 30+ 场景：DOLLAR/AT/NAMED 三种类型 + 全部 SQL 词法元素跳过（单引号/双引号/反引号/dollar quoting/行注释/块注释）+ `\?`/`??` 转义 + 幂等性 |
-| **IN 子句展开** | 正常/异常/边界场景，DB/Tx/Conn × Exec/Queryx/QueryRowx/MustExec/NamedQuery 全路径自动检测 + BindExt/NamedExt 契约级测试 |
-| **bindMap/bindStruct** | 正常绑定 + 容错处理（缺失参数保持 `:name`） |
-| **Hook 洋葱模型** | BeforeQuery 正序 + AfterQuery 反序 + 零 Hook 安全 + 单 Hook |
-| **compileNamedQueryWith 容错** | QUESTION/DOLLAR/AT 三种 bindType × 无缺失/部分缺失/全部缺失 + 字符串字面量/注释/dollar-quote 内 `:name` 不识别 |
-| **JSONValue[T]** | 单元测试（Scan/Value/MarshalJSON/UnmarshalJSON）+ 集成测试（真实数据库读写/NULL 处理） |
-| **MapperFunc** | 默认映射、自定义映射、独立 DB 副本映射互不影响 |
-| **StrictMode** | 默认值验证、Set/Get 方法、严格/宽松模式行为、DB→Tx/Conn/Row/Rows 继承传递、NamedStmt/Stmt 继承、错误信息包含列名和索引 |
-| **Conn** | SelectContext/GetContext/ExecContext/QueryxContext/QueryRowxContext/NamedGetContext/NamedSelectContext/NamedExecContext |
-| **CloseWithErr** | err==nil 自动 Commit + err!=nil 自动 Rollback |
-| **集成测试** | MySQL/PostgreSQL/SQLite 三库 CRUD、Hook 继承、NamedExt/BindExt 统一接口（DB/Tx/Conn） |
 
 ## 性能说明
 
