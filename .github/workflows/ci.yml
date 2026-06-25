@@ -25,7 +25,7 @@ jobs:
           SQLX_MYSQL_DSN=skip \
           SQLX_POSTGRES_DSN=skip \
           SQLX_SQLSERVER_DSN=skip \
-          go test -v -count=1 -race -coverprofile=coverage.out -covermode=count ./...
+          go test -v -count=1 -race -coverprofile=coverage.out -covermode=atomic ./...
 
       # Upload coverage to Codecov (only on the latest Go version to avoid duplicates)
       - name: Upload coverage to Codecov
