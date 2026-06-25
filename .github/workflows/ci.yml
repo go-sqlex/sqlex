@@ -19,13 +19,18 @@ jobs:
           go-version: ${{ matrix.go-version }}
       - run: go mod download
 
-      # Run tests with coverage + race detection (skipping drivers that need a DB)
+      # Run tests with coverage + race detection.
+      # SQLite uses :memory: by default (no SQLX_SQLITE_DSN set).
+      # MySQL/PostgreSQL/SQL Server require external services, so skipped in CI.
       - name: Run tests with coverage
         run: |
           SQLX_MYSQL_DSN=skip \
           SQLX_POSTGRES_DSN=skip \
           SQLX_SQLSERVER_DSN=skip \
-          go test -v -count=1 -race -coverprofile=coverage.out -covermode=atomic ./...
+          go test -v -count=1 -race \
+            -coverprofile=coverage.out -covermode=atomic \
+            -coverpkg=github.com/go-sqlex/sqlex,github.com/go-sqlex/sqlex/types,github.com/go-sqlex/sqlex/reflectx \
+            ./...
 
       # Upload coverage to Codecov (only on the latest Go version to avoid duplicates)
       - name: Upload coverage to Codecov
