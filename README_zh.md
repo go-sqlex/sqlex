@@ -1,5 +1,7 @@
 [English](README.md) | **中文**
 
+[![Mentioned in Awesome Go](https://awesome.re/mentioned-badge.svg)](https://github.com/avelino/awesome-go)
+
 # sqlex
 
 > [jmoiron/sqlx](https://github.com/jmoiron/sqlx) 的**即插即用替代品** — 100% API 兼容，新增 Hook 切面、JSON 泛型类型、Bug 修复等实用功能。

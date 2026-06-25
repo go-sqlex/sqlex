@@ -4,6 +4,7 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/go-sqlex/sqlex)](https://goreportcard.com/report/github.com/go-sqlex/sqlex)
 [![GoDoc](https://pkg.go.dev/badge/github.com/go-sqlex/sqlex)](https://pkg.go.dev/github.com/go-sqlex/sqlex)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Mentioned in Awesome Go](https://awesome.re/mentioned-badge.svg)](https://github.com/avelino/awesome-go)
 
 # sqlex
 
