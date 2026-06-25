@@ -35,8 +35,8 @@ import (
 // crossDBOnly skips environments without any remote database
 func crossDBOnly(t *testing.T) {
 	t.Helper()
-	if !isTestPostgres && !isTestMysql && !isTestSqlserver {
-		t.Skip("No remote database (MySQL/PostgreSQL/SQL Server) is available, skipping cross-DB test")
+	if !isTestPostgres && !isTestMysql && !isTestSqlserver && !isTestSqlite {
+		t.Skip("No database available, skipping test")
 	}
 }
 
@@ -55,6 +55,11 @@ func isSQLServer(db *sqlex.DB) bool {
 	return db.DriverName() == "sqlserver"
 }
 
+// isSQLite checks if the current DB is SQLite
+func isSQLite(db *sqlex.DB) bool {
+	return db.DriverName() == "sqlite3"
+}
+
 // schemaForDB returns the corresponding DDL based on the current DB type
 func schemaForDB(db *sqlex.DB, s Schema) (create, drop, now string) {
 	switch {
@@ -62,6 +67,8 @@ func schemaForDB(db *sqlex.DB, s Schema) (create, drop, now string) {
 		return s.MySQL()
 	case isSQLServer(db):
 		return s.SQLServer()
+	case isSQLite(db):
+		return s.Sqlite3()
 	default:
 		return s.Postgres()
 	}

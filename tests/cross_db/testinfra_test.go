@@ -106,9 +106,10 @@ func connectAll() {
 	isTestSqlite = sqdsn != "skip"
 	isTestSqlserver = msdsn != "" && msdsn != "skip"
 
-	// SQLite defaults to in-memory database when not configured
+	// SQLite defaults to shared in-memory database when not configured.
+	// Using cache=shared so all connections in the pool see the same schema.
 	if sqdsn == "" {
-		sqdsn = ":memory:"
+		sqdsn = "file::memory:?cache=shared"
 	}
 
 	// Only append parseTime when DSN is non-empty and doesn't already contain it
@@ -198,6 +199,10 @@ func runWithSchema(schema Schema, t *testing.T, test func(db *sqlex.DB, t *testi
 	if isTestMysql {
 		create, drop, now := schema.MySQL()
 		runner(mysqldb, t, create, drop, now)
+	}
+	if isTestSqlite {
+		create, drop, now := schema.Sqlite3()
+		runner(sldb, t, create, drop, now)
 	}
 	if isTestSqlserver {
 		create, drop, now := schema.SQLServer()

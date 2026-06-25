@@ -496,41 +496,7 @@ func TestCrossDB_BindExt_Contract_ExecAutoIN(t *testing.T) {
 	runWithSchema(crossSchema, t, func(db *sqlex.DB, t *testing.T, now string) {
 		crossDBOnly(t)
 
-		ctx := context.Background()
-		// contractCases lists factories for all current BindExt implementations
-		contractCases := []struct {
-			name    string
-			factory func(t *testing.T) (sqlex.BindExt, func())
-		}{
-			{
-				name: "DB",
-				factory: func(t *testing.T) (sqlex.BindExt, func()) {
-					return db, func() {}
-				},
-			},
-			{
-				name: "Tx",
-				factory: func(t *testing.T) (sqlex.BindExt, func()) {
-					tx, err := db.Beginx()
-					if err != nil {
-						t.Fatalf("Beginx failed: %v", err)
-					}
-					return tx, func() { _ = tx.Rollback() }
-				},
-			},
-			{
-				name: "Conn",
-				factory: func(t *testing.T) (sqlex.BindExt, func()) {
-					conn, err := db.Connx(ctx)
-					if err != nil {
-						t.Fatalf("Connx failed: %v", err)
-					}
-					return conn, func() { _ = conn.Close() }
-				},
-			},
-		}
-
-		for _, c := range contractCases {
+		for _, c := range extFactories(db) {
 			t.Run(c.name, func(t *testing.T) {
 				// Each case independently prepares data to avoid mutual interference
 				multiExec(db, crossSchema.Drop)
@@ -583,40 +549,7 @@ func TestCrossDB_NamedExt_Contract_AutoIN(t *testing.T) {
 	runWithSchema(crossSchema, t, func(db *sqlex.DB, t *testing.T, now string) {
 		crossDBOnly(t)
 
-		ctx := context.Background()
-		contractCases := []struct {
-			name    string
-			factory func(t *testing.T) (sqlex.NamedExt, func())
-		}{
-			{
-				name: "DB",
-				factory: func(t *testing.T) (sqlex.NamedExt, func()) {
-					return db, func() {}
-				},
-			},
-			{
-				name: "Tx",
-				factory: func(t *testing.T) (sqlex.NamedExt, func()) {
-					tx, err := db.Beginx()
-					if err != nil {
-						t.Fatalf("Beginx failed: %v", err)
-					}
-					return tx, func() { _ = tx.Rollback() }
-				},
-			},
-			{
-				name: "Conn",
-				factory: func(t *testing.T) (sqlex.NamedExt, func()) {
-					conn, err := db.Connx(ctx)
-					if err != nil {
-						t.Fatalf("Connx failed: %v", err)
-					}
-					return conn, func() { _ = conn.Close() }
-				},
-			},
-		}
-
-		for _, c := range contractCases {
+		for _, c := range extFactories(db) {
 			t.Run(c.name, func(t *testing.T) {
 				// Independent data preparation
 				multiExec(db, crossSchema.Drop)
