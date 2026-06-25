@@ -34,6 +34,7 @@ environ
 
 # Test environment (contains credentials)
 .env.test
+.Ds_Store
 
 # Go build artifacts
 bin/

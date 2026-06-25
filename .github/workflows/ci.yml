@@ -17,8 +17,25 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ matrix.go-version }}
-      - run: SQLX_MYSQL_DSN=skip SQLX_POSTGRES_DSN=skip SQLX_SQLSERVER_DSN=skip go test -v -count=1 ./...
-      - run: make test
+      - run: go mod download
+
+      # Run tests with coverage + race detection (skipping drivers that need a DB)
+      - name: Run tests with coverage
+        run: |
+          SQLX_MYSQL_DSN=skip \
+          SQLX_POSTGRES_DSN=skip \
+          SQLX_SQLSERVER_DSN=skip \
+          go test -v -count=1 -race -coverprofile=coverage.out -covermode=count ./...
+
+      # Upload coverage to Codecov (only on the latest Go version to avoid duplicates)
+      - name: Upload coverage to Codecov
+        if: matrix.go-version == '1.26'
+        uses: codecov/codecov-action@v5
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+        with:
+          files: ./coverage.out
+          fail_ci_if_error: false
 
   check:
     runs-on: ubuntu-latest
