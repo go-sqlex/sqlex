@@ -509,7 +509,7 @@ conn, _ := db.Connx(ctx) // inherits DB's strict setting
 
 ### Unified Interfaces
 
-DB, Tx, and Conn implement a common set of interfaces (enforced by compile-time assertions):
+DB, Tx, and Conn implement a common set of interfaces (enforced by compile-time assertions). Interfaces are small and orthogonal — compose as needed, no need for a "god interface":
 
 | Interface | Methods | Purpose |
 |-----------|---------|---------|
