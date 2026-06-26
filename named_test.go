@@ -509,6 +509,34 @@ func TestNamedQueries(t *testing.T) {
 	})
 }
 
+// TestNamedExecBatchInsertNoColumnList verifies fixBound expands batch insert
+// without column list: INSERT INTO t VALUES (:a, :b). See #898.
+func TestNamedExecBatchInsertNoColumnList(t *testing.T) {
+	RunWithSchema(defaultSchema, t, func(db *DB, t *testing.T, now string) {
+		test := Test{t}
+
+		sls := []Person{
+			{FirstName: "NoCol1", LastName: "Test", Email: "nocol1@test.com"},
+			{FirstName: "NoCol2", LastName: "Test", Email: "nocol2@test.com"},
+			{FirstName: "NoCol3", LastName: "Test", Email: "nocol3@test.com"},
+		}
+
+		insert := fmt.Sprintf(
+			"INSERT INTO person VALUES (:first_name, :last_name, :email, %s)",
+			now,
+		)
+		_, err := db.NamedExec(insert, sls)
+		test.Error(err)
+
+		var count int
+		err = db.Get(&count, "SELECT COUNT(*) FROM person WHERE last_name = 'Test'")
+		test.Error(err)
+		if count != 3 {
+			t.Errorf("expected 3 rows (fixBound should expand), got %d", count)
+		}
+	})
+}
+
 func TestFixBounds(t *testing.T) {
 	table := []struct {
 		name, query, expect string

@@ -18,8 +18,8 @@ import (
 	"database/sql/driver"
 	"fmt"
 	"reflect"
-	"regexp"
 	"strconv"
+	"strings"
 
 	"github.com/go-sqlex/sqlex/reflectx"
 )
@@ -320,11 +320,15 @@ func bindStruct(bindType int, query string, arg any, m *reflectx.Mapper) (string
 	return bound, arglist, nil
 }
 
-var valuesReg = regexp.MustCompile(`\)\s*(?i)VALUES\s*\(`)
-
 func findMatchingClosingBracketIndex(s string) int {
 	count := 0
-	for i, ch := range s {
+	for i := 0; i < len(s); {
+		// Skip string literals, comments, quoted identifiers, dollar-quoted strings
+		if end, _, skip := scanSkipSegment(s, i); skip {
+			i = end
+			continue
+		}
+		ch := s[i]
 		if ch == '(' {
 			count++
 		}
@@ -334,27 +338,68 @@ func findMatchingClosingBracketIndex(s string) int {
 				return i
 			}
 		}
+		i++
 	}
 	return 0
 }
 
+// findValuesKeyword finds VALUES keyword position, skipping string literals/comments.
+// Does not require ) before VALUES (fixes #898).
+func findValuesKeyword(s string) int {
+	for i := 0; i < len(s); {
+		if end, _, skip := scanSkipSegment(s, i); skip {
+			i = end
+			continue
+		}
+		if isKeywordAt(s, i, "VALUES") {
+			return i
+		}
+		i++
+	}
+	return -1
+}
+
+// isKeywordAt checks keyword match at pos with word boundary (case-insensitive).
+func isKeywordAt(s string, pos int, keyword string) bool {
+	if pos+len(keyword) > len(s) {
+		return false
+	}
+	for j := 0; j < len(keyword); j++ {
+		if (s[pos+j] | 0x20) != (keyword[j] | 0x20) {
+			return false
+		}
+	}
+	// word boundary check
+	if pos > 0 && isIdentByte(s[pos-1]) {
+		return false
+	}
+	end := pos + len(keyword)
+	if end < len(s) && isIdentByte(s[end]) {
+		return false
+	}
+	return true
+}
+
 func fixBound(bound string, loop int) string {
-	loc := valuesReg.FindStringIndex(bound)
-	// defensive guard when "VALUES (...)" not found
-	if len(loc) < 2 {
+	valuesPos := findValuesKeyword(bound)
+	if valuesPos < 0 {
 		return bound
 	}
 
-	openingBracketIndex := loc[1] - 1
+	rest := bound[valuesPos+len("VALUES"):]
+	openOffset := strings.IndexByte(rest, '(')
+	if openOffset < 0 {
+		return bound
+	}
+	openingBracketIndex := valuesPos + len("VALUES") + openOffset
+
 	index := findMatchingClosingBracketIndex(bound[openingBracketIndex:])
-	// defensive guard. must have closing bracket
 	if index == 0 {
 		return bound
 	}
 	closingBracketIndex := openingBracketIndex + index + 1
 
 	var buffer bytes.Buffer
-
 	buffer.WriteString(bound[0:closingBracketIndex])
 	for i := 0; i < loop-1; i++ {
 		buffer.WriteString(",")
