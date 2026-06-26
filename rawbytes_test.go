@@ -106,6 +106,7 @@ func TestScanAll_RawBytes_Corruption(t *testing.T) {
 // reliably exercise in CI.
 func TestContainsRawBytes(t *testing.T) {
 	type unexportedRaw struct {
+		//lint:ignore U1000 intentionally unused: exists for reflect inspection by containsRawBytes
 		data sql.RawBytes // unexported, must be skipped
 		Name string       // exported, not RawBytes
 	}
@@ -125,6 +126,7 @@ func TestContainsRawBytes(t *testing.T) {
 		Name string
 	}
 	type embeddedUnexportedRaw struct {
+		//lint:ignore U1000 intentionally unused: exists for reflect inspection by containsRawBytes
 		data sql.RawBytes // unexported, must be skipped even though it's the only field
 	}
 
