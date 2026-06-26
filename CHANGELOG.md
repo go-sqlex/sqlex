@@ -1,5 +1,6 @@
 ## v1.5.3
 
+- **Fix `Select` + `sql.RawBytes` data corruption** (sqlx #931): `Select`/`ScanAll` now rejects `sql.RawBytes` destinations with a clear error, preventing silent data corruption caused by driver buffer reuse across rows.
 - **Fix `Rows.NextResultSet` cache invalidation** (sqlx #857): `NextResultSet()` now resets the StructScan cache (`started`/`fields`/`values`), preventing stale field mappings from corrupting scans of subsequent result sets with different column structures.
 - **Fix `fixBound` VALUES expansion** (sqlx #898/#694/#772): batch INSERT/UPDATE with `VALUES (...)` no longer silently drops rows when VALUES is not preceded by `)`. Now supports `INSERT INTO t VALUES (:a, :b)` (no column list) and PG `UPDATE ... FROM (VALUES (:a, :b))`. Uses lexer-based keyword search instead of regex, correctly skipping string literals and comments.
 - **Fix nil `driver.Valuer` panic in `In`** (sqlx #952): nil pointer Valuers (e.g. `(*T)(nil)` with value-receiver `Value()`) no longer panic; they are treated as NULL, mirroring `database/sql.callValuerValue`.
