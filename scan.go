@@ -1,6 +1,7 @@
 package sqlex
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 	"reflect"
@@ -70,9 +71,16 @@ func scanAll(rows rowsi, dest any, structOnly bool) error {
 	}
 	direct.SetLen(0)
 
-	isPtr := slice.Elem().Kind() == reflect.Ptr
-	base := reflectx.Deref(slice.Elem())
-	scannable := isScannable(base)
+	var (
+		isPtr     = slice.Elem().Kind() == reflect.Ptr
+		base      = reflectx.Deref(slice.Elem())
+		scannable = isScannable(base)
+	)
+
+	// Reject sql.RawBytes to prevent buffer-reuse corruption. See #931.
+	if containsRawBytes(base) {
+		return errors.New("sqlex: sql.RawBytes is not allowed in Select/ScanAll (use []byte instead)")
+	}
 
 	if structOnly && scannable {
 		return structOnlyError(base)
@@ -238,6 +246,26 @@ func baseType(t reflect.Type, expected reflect.Kind) (reflect.Type, error) {
 		return nil, fmt.Errorf("expected %s but got %s", expected, t.Kind())
 	}
 	return t, nil
+}
+
+var rawBytesType = reflect.TypeOf(sql.RawBytes{})
+
+// containsRawBytes checks if type t is sql.RawBytes or contains it as a struct field.
+func containsRawBytes(t reflect.Type) bool {
+	if t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
+	if t == rawBytesType {
+		return true
+	}
+	if t.Kind() == reflect.Struct {
+		for i := 0; i < t.NumField(); i++ {
+			if containsRawBytes(t.Field(i).Type) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // fieldsByName fills a values interface with fields from the passed value based

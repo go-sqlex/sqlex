@@ -329,3 +329,83 @@ func TestCrossDBNamedDoubleQuoteIdentifier(t *testing.T) {
 		}
 	})
 }
+
+// ========================================================
+// TestCrossDBNamedBatchInsert — 验证批量插入 VALUES 展开（#898）
+// ========================================================
+func TestCrossDBNamedBatchInsert(t *testing.T) {
+	runWithSchema(crossSchema, t, func(db *sqlex.DB, t *testing.T, now string) {
+		crossDBOnly(t)
+
+		users := []CrossUser{
+			{Name: "Batch1", Email: "batch1@test.com", Age: 20},
+			{Name: "Batch2", Email: "batch2@test.com", Age: 21},
+			{Name: "Batch3", Email: "batch3@test.com", Age: 22},
+		}
+
+		// 有列名 — 对照组
+		_, err := db.NamedExec(
+			`INSERT INTO cross_users (name, email, age) VALUES (:name, :email, :age)`, users)
+		if err != nil {
+			t.Fatalf("[%s] batch insert with column list failed: %v", dbLabel(db), err)
+		}
+
+		var count int
+		err = db.Get(&count, "SELECT COUNT(*) FROM cross_users WHERE email LIKE 'batch%@test.com'")
+		if err != nil {
+			t.Fatalf("[%s] count failed: %v", dbLabel(db), err)
+		}
+		if count != 3 {
+			t.Errorf("[%s] expected 3 rows, got %d", dbLabel(db), count)
+		}
+	})
+}
+
+// ========================================================
+// TestCrossDBNamedBatchUpdateFromValues — PG 批量更新 FROM (VALUES ...)（#898）
+// ========================================================
+func TestCrossDBNamedBatchUpdateFromValues(t *testing.T) {
+	runWithSchema(crossSchema, t, func(db *sqlex.DB, t *testing.T, now string) {
+		crossDBOnly(t)
+		if !isPostgres(db) {
+			t.Skip("FROM (VALUES ...) is PostgreSQL-specific syntax")
+		}
+
+		seedCrossData(db, t)
+
+		updates := []struct {
+			ID     int `db:"id"`
+			NewAge int `db:"new_age"`
+		}{
+			{ID: 1, NewAge: 99},
+			{ID: 2, NewAge: 88},
+			{ID: 3, NewAge: 77},
+		}
+
+		// PG 批量更新：UPDATE ... FROM (VALUES (:id, :new_age)) AS v(id, new_age)
+		// 注意：VALUES (?, ?) 中 PG 推断为 text，需要 ::int 转换
+		_, err := db.NamedExec(
+			`UPDATE cross_users SET age = v.new_age::int
+			 FROM (VALUES (:id, :new_age)) AS v(id, new_age)
+			 WHERE cross_users.id = v.id::int`, updates)
+		if err != nil {
+			t.Fatalf("[POSTGRES] batch update FROM (VALUES) failed: %v", err)
+		}
+
+		// 验证三行都更新了
+		var ages []int
+		err = db.Select(&ages, "SELECT age FROM cross_users WHERE id IN (1,2,3) ORDER BY id")
+		if err != nil {
+			t.Fatalf("[POSTGRES] select ages failed: %v", err)
+		}
+		if len(ages) != 3 {
+			t.Fatalf("[POSTGRES] expected 3 rows, got %d", len(ages))
+		}
+		expected := []int{99, 88, 77}
+		for i, a := range ages {
+			if a != expected[i] {
+				t.Errorf("[POSTGRES] id=%d: expected age %d, got %d", i+1, expected[i], a)
+			}
+		}
+	})
+}

@@ -123,55 +123,6 @@ func (m *Mapper) TypeMap(t reflect.Type) *StructMap {
 	return mapping
 }
 
-// FieldMap returns the mapper's mapping of field names to reflect values.  Panics
-// if v's Kind is not Struct, or v is not Indirectable to a struct kind.
-func (m *Mapper) FieldMap(v reflect.Value) map[string]reflect.Value {
-	v = reflect.Indirect(v)
-	mustBe(v, reflect.Struct)
-
-	r := map[string]reflect.Value{}
-	tm := m.TypeMap(v.Type())
-	for tagName, fi := range tm.Names {
-		r[tagName] = FieldByIndexes(v, fi.Index)
-	}
-	return r
-}
-
-// FieldByName returns a field by its mapped name as a reflect.Value.
-// Panics if v's Kind is not Struct or v is not Indirectable to a struct Kind.
-// Returns zero Value if the name is not found.
-func (m *Mapper) FieldByName(v reflect.Value, name string) reflect.Value {
-	v = reflect.Indirect(v)
-	mustBe(v, reflect.Struct)
-
-	tm := m.TypeMap(v.Type())
-	fi, ok := tm.Names[name]
-	if !ok {
-		return v
-	}
-	return FieldByIndexes(v, fi.Index)
-}
-
-// FieldsByName returns a slice of values corresponding to the slice of names
-// for the value.  Panics if v's Kind is not Struct or v is not Indirectable
-// to a struct Kind.  Returns zero Value for each name not found.
-func (m *Mapper) FieldsByName(v reflect.Value, names []string) []reflect.Value {
-	v = reflect.Indirect(v)
-	mustBe(v, reflect.Struct)
-
-	tm := m.TypeMap(v.Type())
-	vals := make([]reflect.Value, 0, len(names))
-	for _, name := range names {
-		fi, ok := tm.Names[name]
-		if !ok {
-			vals = append(vals, *new(reflect.Value))
-		} else {
-			vals = append(vals, FieldByIndexes(v, fi.Index))
-		}
-	}
-	return vals
-}
-
 // TraversalsByName returns a slice of int slices which represent the struct
 // traversals for each mapped name.  Panics if t is not a struct or Indirectable
 // to a struct.  Returns empty int slice for each name not found.
@@ -228,12 +179,13 @@ func FieldByIndexes(v reflect.Value, indexes []int) reflect.Value {
 	return v
 }
 
-// FieldByIndexesReadOnly returns a value for a particular struct traversal,
-// but is not concerned with allocating nil pointers because the value is
-// going to be used for reading and not setting.
+// FieldByIndexesReadOnly is like FieldByIndexes but does not allocate nil pointers.
 func FieldByIndexesReadOnly(v reflect.Value, indexes []int) reflect.Value {
 	for _, i := range indexes {
 		v = reflect.Indirect(v).Field(i)
+		if v.Kind() == reflect.Ptr && v.IsNil() {
+			return v
+		}
 	}
 	return v
 }

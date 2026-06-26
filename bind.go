@@ -64,14 +64,10 @@ func Rebind(bindType int, query string) string {
 		return query
 	}
 
-	// Fast path: when query contains no ?, skip lexical scanning (already-rebound queries,
-	// pure DDL, etc. often hit this path) and return directly to avoid the subsequent
-	// make([]byte) allocation.
 	if strings.IndexByte(query, '?') < 0 {
 		return query
 	}
 
-	// Add space enough for 10 params before we have to allocate
 	var (
 		rqb = make([]byte, 0, len(query)+10)
 		j   int
@@ -123,10 +119,7 @@ func Rebind(bindType int, query string) string {
 	return string(rqb)
 }
 
-// Experimental implementation of Rebind which uses a bytes.Buffer.  The code is
-// much simpler and should be more resistant to odd unicode, but it is twice as
-// slow.  Kept here for benchmarking purposes and to possibly replace Rebind if
-// problems arise with its somewhat naive handling of unicode.
+// rebindBuff is kept for benchmarking comparison.
 func rebindBuff(bindType int, query string) string {
 	if bindType != DOLLAR {
 		return query
@@ -148,6 +141,14 @@ func rebindBuff(bindType int, query string) string {
 	return rqb.String()
 }
 
+// callValuerValue mirrors database/sql.callValuerValue. See #952.
+func callValuerValue(vr driver.Valuer) (driver.Value, error) {
+	if rv := reflect.ValueOf(vr); rv.Kind() == reflect.Ptr && rv.IsNil() {
+		return nil, nil
+	}
+	return vr.Value()
+}
+
 func asSliceForIn(i any) (v reflect.Value, ok bool) {
 	if i == nil {
 		return reflect.Value{}, false
@@ -156,40 +157,33 @@ func asSliceForIn(i any) (v reflect.Value, ok bool) {
 	v = reflect.ValueOf(i)
 	t := reflectx.Deref(v.Type())
 
-	// Only expand slices
 	if t.Kind() != reflect.Slice {
 		return reflect.Value{}, false
 	}
 
-	// []byte is a driver.Value type so it should not be expanded
 	if t == reflect.TypeOf([]byte{}) {
 		return reflect.Value{}, false
+	}
 
+	// Nil pointer slice: treat as empty slice; non-nil: dereference to Slice Value.
+	if v.Kind() == reflect.Ptr {
+		if v.IsNil() {
+			return reflect.Zero(t), true
+		}
+		v = v.Elem()
 	}
 
 	return v, true
 }
 
-// valueArg / listArg are internal wrapper types for AsValue / AsList.
-// Unexported struct types prevent users from bypassing the helpers and constructing them directly.
+// valueArg/listArg are internal wrappers for AsValue/AsList.
 type valueArg struct{ v any }
 type listArg struct{ v any }
 
-// AsValue wraps a value, telling In/autoIn not to expand it into an IN list;
-// it is passed as a single argument as-is.
-//
-// Use case: INSERT/UPDATE slice field values, PG's ANY(?)/ALL(?) and other patterns
-// that might be misidentified as the (?) form.
-//
-//	db.Exec("INSERT INTO t (col) VALUES (?)", sqlex.AsValue([]int{1, 2, 3}))
-//	db.Select(&rows, "WHERE id = ANY(?)", sqlex.AsValue(pq.Array([]int{1,2,3})))
+// AsValue tells In/autoIn not to expand the value into an IN list.
 func AsValue(v any) any { return valueArg{v: v} }
 
-// AsList wraps a slice, forcing expansion into an IN list (even if ? is not in the (?) form).
-// Returns an error from In if the argument is not a slice or is an empty slice.
-//
-//	db.Exec("WHERE x = ?", sqlex.AsList([]int{1, 2, 3}))
-//	// Expands to "WHERE x = ?, ?, ?"
+// AsList forces slice expansion even without IN (?) context.
 func AsList(slice any) any { return listArg{v: slice} }
 
 // In expands slice values in args, returning the modified query string
@@ -252,7 +246,7 @@ func In(query string, args ...any) (string, []any, error) {
 
 		if a, ok := arg.(driver.Valuer); ok {
 			var err error
-			arg, err = a.Value()
+			arg, err = callValuerValue(a)
 			if err != nil {
 				return "", nil, err
 			}
@@ -271,8 +265,6 @@ func In(query string, args ...any) (string, []any, error) {
 		}
 	}
 
-	// No rewrite needed: return as-is. Note that this fast path skips the argument
-	// count validation below; count mismatches will surface at the driver layer.
 	if !needRewrite {
 		return query, args, nil
 	}
@@ -340,11 +332,8 @@ func In(query string, args ...any) (string, []any, error) {
 	return buf.String(), newArgs, nil
 }
 
-// nextPlaceholder finds the next ? placeholder from start, skipping string literals,
-// identifiers, comments, and \? / ?? escapes. Returns idx=-1 if not found.
-//
-// inParen=true means ? is in IN (?) context: strict (?) form + ( preceded by IN
-// (case-insensitive, including NOT IN). Only this triggers slice expansion.
+// nextPlaceholder finds the next ? placeholder, skipping string literals/comments.
+// Returns inParen=true when ? is in IN (?) context.
 func nextPlaceholder(query string, start int) (idx int, inParen bool) {
 	parenPos := -1 // position of the most recent (; -1 = no adjacent (
 	for i := start; i < len(query); {
@@ -400,8 +389,7 @@ func isIdentByte(c byte) bool {
 		(c >= '0' && c <= '9') || c == '_'
 }
 
-// hasMatchingCloseParen checks if the next non-whitespace char after start is ).
-// Does not skip comments/strings; use sqlex.AsList to force expansion in those cases.
+// hasMatchingCloseParen checks if the next non-whitespace char is ).
 func hasMatchingCloseParen(query string, start int) bool {
 	for j := start; j < len(query); j++ {
 		c := query[j]
@@ -413,8 +401,7 @@ func hasMatchingCloseParen(query string, start int) bool {
 	return false
 }
 
-// precededByIn checks if the identifier immediately before ( at parenPos is the IN
-// keyword (case-insensitive). Full token comparison: col_in / t.in are not misidentified.
+// precededByIn checks if the token before ( is the IN keyword.
 func precededByIn(query string, parenPos int) bool {
 	j := parenPos - 1
 	for j >= 0 && isASCIISpace(query[j]) {
@@ -431,7 +418,6 @@ func precededByIn(query string, parenPos int) bool {
 	if c0, c1 := query[tokenStart], query[tokenStart+1]; (c0|0x20) != 'i' || (c1|0x20) != 'n' {
 		return false
 	}
-	// Qualified name (e.g. t.in) is not the IN keyword
 	return tokenStart == 0 || query[tokenStart-1] != '.'
 }
 

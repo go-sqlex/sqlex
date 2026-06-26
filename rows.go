@@ -25,6 +25,14 @@ func (r *Rows) GetMapper() *reflectx.Mapper {
 	return r.Mapper
 }
 
+// NextResultSet invalidates the StructScan cache before switching result sets. See #857.
+func (r *Rows) NextResultSet() bool {
+	r.started = false
+	r.fields = nil
+	r.values = nil
+	return r.Rows.NextResultSet()
+}
+
 // SliceScan using this Rows.
 func (r *Rows) SliceScan() ([]any, error) {
 	return SliceScan(r)
