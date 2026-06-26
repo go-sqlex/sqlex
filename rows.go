@@ -25,6 +25,16 @@ func (r *Rows) GetMapper() *reflectx.Mapper {
 	return r.Mapper
 }
 
+// NextResultSet prepares the next result set for reading. It overrides
+// sql.Rows.NextResultSet to invalidate the StructScan cache (started/fields/values),
+// which would otherwise be stale for the new result set's column structure. See #857.
+func (r *Rows) NextResultSet() bool {
+	r.started = false
+	r.fields = nil
+	r.values = nil
+	return r.Rows.NextResultSet()
+}
+
 // SliceScan using this Rows.
 func (r *Rows) SliceScan() ([]any, error) {
 	return SliceScan(r)

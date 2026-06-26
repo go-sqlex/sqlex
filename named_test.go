@@ -146,6 +146,15 @@ func TestCompileQuery(t *testing.T) {
 			N: "SELECT * FROM t /* skip :x */ WHERE ip = '::1' AND name = 'it''s :y' -- :z\nAND id = :id AND age > :age",
 			V: []string{"id", "age"},
 		},
+		// Issue #947: URL in string literal should not be misidentified as named parameter
+		{
+			Q: `SELECT id, 'http://example.com' AS link FROM t WHERE id = :input_id`,
+			R: `SELECT id, 'http://example.com' AS link FROM t WHERE id = ?`,
+			D: `SELECT id, 'http://example.com' AS link FROM t WHERE id = $1`,
+			T: `SELECT id, 'http://example.com' AS link FROM t WHERE id = @p1`,
+			N: `SELECT id, 'http://example.com' AS link FROM t WHERE id = :input_id`,
+			V: []string{"input_id"},
+		},
 		// Colons inside double-quoted identifiers should not be parsed as named parameters (PostgreSQL identifier quoting)
 		{
 			Q: `SELECT "col:name" FROM t WHERE id = :id`,
