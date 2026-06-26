@@ -252,15 +252,17 @@ var rawBytesType = reflect.TypeOf(sql.RawBytes{})
 
 // containsRawBytes checks if type t is sql.RawBytes or contains it as a struct field.
 func containsRawBytes(t reflect.Type) bool {
-	if t.Kind() == reflect.Ptr {
-		t = t.Elem()
-	}
+	t = reflectx.Deref(t)
 	if t == rawBytesType {
 		return true
 	}
 	if t.Kind() == reflect.Struct {
 		for i := 0; i < t.NumField(); i++ {
-			if containsRawBytes(t.Field(i).Type) {
+			f := t.Field(i)
+			if !f.IsExported() && !f.Anonymous {
+				continue
+			}
+			if containsRawBytes(f.Type) {
 				return true
 			}
 		}

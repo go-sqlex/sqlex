@@ -3,6 +3,7 @@ package sqlex
 import (
 	"bytes"
 	"database/sql"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -97,4 +98,61 @@ func TestScanAll_RawBytes_Corruption(t *testing.T) {
 			}
 		}
 	})
+}
+
+// TestContainsRawBytes is a database-free unit test covering all branches of
+// containsRawBytes, in particular the skip of unexported non-embedded fields
+// (the continue path) which the PG-dependent integration test above cannot
+// reliably exercise in CI.
+func TestContainsRawBytes(t *testing.T) {
+	type unexportedRaw struct {
+		//lint:ignore U1000 intentionally unused: exists for reflect inspection by containsRawBytes
+		data sql.RawBytes // unexported, must be skipped
+		Name string       // exported, not RawBytes
+	}
+	type withRawField struct {
+		Data sql.RawBytes
+	}
+	type withPtrRawField struct {
+		Data *sql.RawBytes
+	}
+	type nestedRaw struct {
+		Inner struct {
+			Data sql.RawBytes
+		}
+	}
+	type cleanStruct struct {
+		ID   int64
+		Name string
+	}
+	type embeddedUnexportedRaw struct {
+		//lint:ignore U1000 intentionally unused: exists for reflect inspection by containsRawBytes
+		data sql.RawBytes // unexported, must be skipped even though it's the only field
+	}
+
+	tests := []struct {
+		name string
+		v    any
+		want bool
+	}{
+		{"raw bytes directly", sql.RawBytes{}, true},
+		{"pointer to raw bytes", &sql.RawBytes{}, true},
+		{"byte slice", []byte{}, false},
+		{"string", "", false},
+		{"int", 0, false},
+		{"struct with exported raw field", withRawField{}, true},
+		{"struct with ptr raw field", withPtrRawField{}, true},
+		{"nested struct with raw", nestedRaw{}, true},
+		{"clean struct no raw bytes", cleanStruct{}, false},
+		{"unexported raw field skipped", unexportedRaw{}, false},
+		{"only unexported raw field skipped", embeddedUnexportedRaw{}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := containsRawBytes(reflect.TypeOf(tt.v))
+			if got != tt.want {
+				t.Errorf("containsRawBytes(%T) = %v, want %v", tt.v, got, tt.want)
+			}
+		})
+	}
 }
