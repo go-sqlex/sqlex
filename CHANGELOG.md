@@ -1,11 +1,18 @@
 ## v1.5.3
 
-- **Remove unused `reflectx` public API** (#614): deleted `FieldMap`/`FieldByName`/`FieldsByName` (sqlex internal never calls them). Fixed `FieldByIndexesReadOnly` to handle nil pointers without panicking. Tests rewritten to use `TraversalsByName` + `FieldByIndexesReadOnly`, preserving full coverage.
-- **Fix `Select` + `sql.RawBytes` data corruption** (sqlx #931): `Select`/`ScanAll` now rejects `sql.RawBytes` destinations with a clear error, preventing silent data corruption caused by driver buffer reuse across rows.
-- **Fix `Rows.NextResultSet` cache invalidation** (sqlx #857): `NextResultSet()` now resets the StructScan cache (`started`/`fields`/`values`), preventing stale field mappings from corrupting scans of subsequent result sets with different column structures.
-- **Fix `fixBound` VALUES expansion** (sqlx #898/#694/#772): batch INSERT/UPDATE with `VALUES (...)` no longer silently drops rows when VALUES is not preceded by `)`. Now supports `INSERT INTO t VALUES (:a, :b)` (no column list) and PG `UPDATE ... FROM (VALUES (:a, :b))`. Uses lexer-based keyword search instead of regex, correctly skipping string literals and comments.
-- **Fix nil `driver.Valuer` panic in `In`** (sqlx #952): nil pointer Valuers (e.g. `(*T)(nil)` with value-receiver `Value()`) no longer panic; they are treated as NULL, mirroring `database/sql.callValuerValue`.
-- **Fix nil pointer slice panic in `asSliceForIn`**: nil pointer to a slice type (e.g. `*[]int(nil)`) no longer panics; it is treated as empty slice (rejected in IN(?) context, passed as-is elsewhere). Non-nil pointer slices are now correctly dereferenced.
+> Focus: fix 5 critical bugs inherited from jmoiron/sqlx — data corruption, panics, and silent data loss.
+
+### 🐛 Bug Fixes
+
+- **`Select` + `sql.RawBytes` data corruption** (sqlx [#931](https://github.com/jmoiron/sqlx/issues/931)): `Select`/`ScanAll` now rejects `sql.RawBytes` destinations with a clear error, preventing silent data corruption caused by driver buffer reuse across rows.
+- **`In` panic on nil `driver.Valuer`** (sqlx [#952](https://github.com/jmoiron/sqlx/issues/952)): nil pointer Valuers (e.g. `(*T)(nil)` with value-receiver `Value()`) no longer panic — treated as NULL, mirroring `database/sql.callValuerValue`.
+- **`In` panic on nil pointer slices**: `*[]int(nil)` no longer panics — treated as empty slice (rejected in IN(?) context, passed as-is elsewhere). Non-nil pointer slices are now correctly dereferenced.
+- **`fixBound` VALUES expansion drops rows** (sqlx [#898](https://github.com/jmoiron/sqlx/issues/898)/[#694](https://github.com/jmoiron/sqlx/issues/694)/[#772](https://github.com/jmoiron/sqlx/issues/772)): batch INSERT/UPDATE with `VALUES (...)` no longer silently drops rows when VALUES is not preceded by `)`. Now supports `INSERT INTO t VALUES (:a, :b)` (no column list) and PG `UPDATE ... FROM (VALUES (:a, :b))`. Uses lexer-based keyword search instead of regex, correctly skipping string literals and comments.
+- **`Rows.NextResultSet` cache stale** (sqlx [#857](https://github.com/jmoiron/sqlx/issues/857)): `NextResultSet()` now resets the StructScan cache (`started`/`fields`/`values`), preventing stale field mappings from corrupting scans of subsequent result sets with different column structures.
+
+### ♻️ Refactoring
+
+- **Remove unused `reflectx` public APIs** (#614): deleted `FieldMap`/`FieldByName`/`FieldsByName` (sqlex internal never calls them). Fixed `FieldByIndexesReadOnly` to handle nil pointers without panicking. Tests rewritten to use `TraversalsByName` + `FieldByIndexesReadOnly`, preserving full coverage.
 
 ## v1.5.2
 

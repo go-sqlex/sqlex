@@ -26,6 +26,7 @@ What you get for free after migrating:
 - 🪝 **Hook system** — pluggable SQL interceptors for logging, tracing, metrics (onion model).
 - 📦 **JSONValue[T]** — generic JSON column type with auto serialize/deserialize.
 - 🛡️ **StrictMode** — lenient by default (matching sqlx `Unsafe()`), optionally strict for debugging.
+- 🛠️ **20+ bug fixes** — data corruption, panics, silent data loss, and cross-database failures from jmoiron/sqlx, all fixed. See [Critical Bug Fixes](#critical-bug-fixes-from-sqlx).
 
 → [Migration Guide](#migration-from-jmoironsqlx)
 
@@ -141,6 +142,26 @@ sqlex preserves all sqlx APIs and adds the following capabilities:
 | **Auto Rebind** | All query methods auto-convert `?` to target database placeholders |
 | **StrictMode** | Optional strict struct-field matching for debugging (off by default) |
 | **Cross-database out of the box** | Write SQL with `?` everywhere — works on PostgreSQL, MySQL, SQLite, SQL Server |
+
+## Critical Bug Fixes from sqlx
+
+sqlex fixes **20+ known bugs** from jmoiron/sqlx — including data corruption, panics, and silent failures:
+
+| Bug | Impact | sqlx Issue |
+|-----|--------|------------|
+| `Select` + `sql.RawBytes` | **Data corruption** — driver buffer reuse across rows silently overwrites scanned data | [#931](https://github.com/jmoiron/sqlx/issues/931) |
+| `In` panic on nil `driver.Valuer` | **Panic** — nil pointer Valuers crash instead of returning NULL | [#952](https://github.com/jmoiron/sqlx/issues/952) |
+| `fixBound` VALUES drops rows | **Silent data loss** — batch INSERT/UPDATE with `VALUES (...)` silently skips rows | [#898](https://github.com/jmoiron/sqlx/issues/898) |
+| `NextResultSet` cache stale | **Data corruption** — multi-result-set scans with different columns produce wrong data | [#857](https://github.com/jmoiron/sqlx/issues/857) |
+| `Rebind` replaces `?` in strings | **Wrong SQL** — `?` inside string literals, comments, identifiers replaced with bind vars | — |
+| Named query colons in strings | **Wrong SQL** — IPv6 addresses, URLs, time formats misidentified as named parameters | [#947](https://github.com/jmoiron/sqlx/issues/947) |
+| `ConnectContext` connection leak | **Resource leak** — connection not closed on Ping failure | — |
+| PostgreSQL `::` type cast | **Wrong SQL** — `::int` misidentified as named parameter | [#428](https://github.com/jmoiron/sqlx/issues/428) |
+| Named queries fail on PostgreSQL | **Cross-DB broken** — Named methods don't Rebind, fail on `$N` databases | — |
+| `IN(?)` not expanded on `Exec`/`Queryx` | **Runtime error** — slice args not expanded on some methods | — |
+| Unified SQL lexer | **Root cause** — original has duplicated, inconsistent skip logic in `Rebind`/`In`/`compileNamedQuery`. sqlex uses shared `scanSkipSegment` | — |
+
+> Additional fixes: escaped `??`/`\?` in Rebind, `db:"-"` skip in Named, missing field strict mode checks, `NamedStmt.Exec` return type, named parameter fallback tolerance ([#892](https://github.com/jmoiron/sqlx/issues/892)), and more.
 
 ## Usage Examples
 
@@ -535,21 +556,6 @@ user, err = getUserByName(conn, "Charlie")
 | PostgreSQL `::` | ❌ Misidentified | ✅ Correctly handled |
 | Named query string literals | ❌ Colons misidentified | ✅ Skips colons in strings/comments |
 | Named parameter fallback | ❌ Errors on misidentification | ✅ Missing params preserved as `:name` literals |
-
-## Bug Fixes & Improvements
-
-sqlex fixes the following known issues from jmoiron/sqlx:
-
-- **SQL lexical element handling**: Original assumes all `?`/`:name` are placeholders, ignoring string literals, comments, identifiers, and PG dollar quoting. sqlex correctly handles all SQL lexical elements.
-- **ConnectContext connection leak**: `ConnectContext` didn't close the connection on Ping failure. sqlex calls `db.Close()`.
-- **Rebind escaped question marks**: Original doesn't support `\?` or `??` escapes. sqlex supports both.
-- **Rebind string literals**: Original replaces `?` inside string literals. sqlex correctly skips them.
-- **Named query string literal colons**: Original misidentifies colons in strings (e.g., IPv6 addresses, time formats) as named parameters ([#872](https://github.com/jmoiron/sqlx/issues/872)).
-- **Named parameter fallback**: Original errors on missing params; sqlex preserves them as `:name` literals ([#892](https://github.com/jmoiron/sqlx/issues/892)).
-- **Unified lexer**: Original has duplicated skip logic in `Rebind`/`In`/`compileNamedQuery`. sqlex uses a shared `scanSkipSegment` in `lexer.go`.
-- **Named parameter name rules**: Original allows digits at start (`:123`). sqlex requires `[A-Za-z_][A-Za-z0-9_.]*`.
-- **`::` handling**: Original misidentifies PG type cast `::` as named parameter. sqlex correctly skips it.
-- **Positional query cross-database failure**: Original `Select`/`Get`/`Exec` don't auto-Rebind, failing on PostgreSQL. sqlex auto-Rebinds all methods.
 
 ## Testing
 

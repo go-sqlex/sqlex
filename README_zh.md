@@ -26,6 +26,7 @@
 - 🪝 **Hook 系统** — 可插拔 SQL 拦截器，用于日志、追踪、指标（洋葱模型）。
 - 📦 **JSONValue[T]** — 泛型 JSON 列类型，自动序列化/反序列化。
 - 🛡️ **StrictMode** — 默认宽松（与 sqlx `Unsafe()` 一致），可选开启严格模式辅助调试。
+- 🛠️ **20+ Bug 修复** — 修复 jmoiron/sqlx 的数据损坏、panic、静默丢数据、跨库失败等 20 余个已知 Bug。详见[关键 Bug 修复](#来自-sqlx-的关键-bug-修复)。
 
 → [迁移指南](#从-jmoironsqlx-迁移)
 
@@ -142,6 +143,26 @@ sqlex 保留所有 sqlx API，并新增以下能力：
 | **自动 Rebind** | 所有查询方法自动将 `?` 转换为目标数据库占位符 |
 | **StrictMode 严格模式** | 可选的严格结构体字段匹配（默认关闭） |
 | **跨数据库开箱即用** | 统一用 `?` 写 SQL — PostgreSQL、MySQL、SQLite、SQL Server 通吃 |
+
+## 来自 sqlx 的关键 Bug 修复
+
+sqlex 修复了 jmoiron/sqlx 的 **20+ 个已知 Bug** — 包括数据损坏、panic、静默丢数据等可能影响生产环境的问题：
+
+| Bug | 影响 | sqlx Issue |
+|-----|------|------------|
+| `Select` + `sql.RawBytes` | **数据损坏** — driver 缓冲区在多行间复用，静默覆盖已扫描数据 | [#931](https://github.com/jmoiron/sqlx/issues/931) |
+| `In` 遇 nil `driver.Valuer` panic | **崩溃** — nil 指针 Valuer 直接 panic，而非返回 NULL | [#952](https://github.com/jmoiron/sqlx/issues/952) |
+| `fixBound` VALUES 丢行 | **静默丢数据** — 批量 INSERT/UPDATE 的 `VALUES (...)` 静默跳过部分行 | [#898](https://github.com/jmoiron/sqlx/issues/898) |
+| `NextResultSet` 缓存过期 | **数据损坏** — 多结果集扫描时列结构不同导致字段映射错乱 | [#857](https://github.com/jmoiron/sqlx/issues/857) |
+| `Rebind` 替换字符串中的 `?` | **SQL 错误** — 字符串字面量、注释、标识符中的 `?` 被错误替换为绑定变量 | — |
+| 命名查询字符串冒号误判 | **SQL 错误** — IPv6 地址、URL、时间格式被误识别为命名参数 | [#947](https://github.com/jmoiron/sqlx/issues/947) |
+| `ConnectContext` 连接泄漏 | **资源泄漏** — Ping 失败时未关闭连接 | — |
+| PostgreSQL `::` 类型转换 | **SQL 错误** — `::int` 被误判为命名参数 | [#428](https://github.com/jmoiron/sqlx/issues/428) |
+| Named 查询在 PostgreSQL 失败 | **跨库不可用** — Named 方法不做 Rebind，在 `$N` 数据库上失败 | — |
+| `IN(?)` 在 `Exec`/`Queryx` 不展开 | **运行时错误** — 部分方法未接入切片自动展开 | — |
+| 统一 SQL 词法扫描器 | **根本原因** — 原版 `Rebind`/`In`/`compileNamedQuery` 三处各自实现跳过逻辑，不一致且易漂移。sqlex 统一用 `scanSkipSegment` | — |
+
+> 其他修复：Rebind 支持 `??`/`\?` 转义、命名参数 `db:"-"` 跳过、命名参数容错兜底（[#892](https://github.com/jmoiron/sqlx/issues/892)）、`NamedStmt.Exec` 返回值等。
 
 ## 使用示例
 
@@ -585,34 +606,6 @@ user, err = getUserByName(conn, "Charlie")
 | 类型系统 | `interface{}` | `any` |
 | 文件结构 | 巨型单文件 | 模块化拆分 |
 | Named 查询跨驱动兼容 | ❌ Named 查询在 PG 上失败 | ✅ 所有 Named 方法正确 Rebind |
-
-## Bug 修复与优化
-
-sqlex 在 jmoiron/sqlx 基础上修复了以下已知问题：
-
-| 问题 | 说明 |
-|------|------|
-| **原版不识别 SQL 词法元素** | 原版假设 SQL 中所有 `?`/`:name` 都是占位符，不区分字符串字面量、注释、双引号/反引号标识符、PG dollar quoting 等词法元素。这与 driver/数据库是否支持这些语法元素无关——driver 把 SQL 原样透传给 server 解析；sqlex 必须在 SQL **离开自己之前**正确识别词法，否则 `compileNamedQuery`/`In`/`Rebind` 会把字符串/注释里的 `?`/`:name` 当成真占位符，导致计数错乱、绑定到错误位置。实证见 `tests/cross_db/named_test.go` |
-| **ConnectContext 连接泄漏** | `ConnectContext` 在 Ping 失败时未关闭连接，导致泄漏。sqlex 在 Ping 失败时会 `db.Close()` |
-| **Rebind 转义问号** | 原版不支持 `\?` 或 `??` 转义，导致字面量 `?` 被错误替换。sqlex 支持 `\?` → `?` 和 `??` → `?` |
-| **Rebind 字符串字面量** | 原版 `Rebind` 将单引号字符串字面量中的 `?`（如 `'What?'`）也替换为绑定变量。sqlex 正确跳过字符串字面量，包括 SQL 标准转义引号 `''` |
-| **Rebind 词法元素全覆盖** | 原版仅识别单引号字符串，导致 SQL 注释（`-- ?`、`/* ? */`）、PG 双引号标识符（`"col?"`）、MySQL 反引号标识符（`` `col?` ``）、PG dollar-quoted string（`$$?$$`、`$tag$?$tag$`）内的 `?` 都被错误替换。sqlex 在 Rebind 中识别全部 SQL 词法元素，与 compileNamedQuery 对称，不会再出现"占位符数量不匹配"的隐蔽 bug |
-| **In 函数词法元素全覆盖** | 原版 `In()` 用简单 `IndexByte('?')` 扫描，遇到字符串字面量/注释/双引号/反引号/dollar quoting 内的 `?` 直接报 `number of bindVars exceeds arguments`。sqlex 重写 `In()` 使其与 Rebind 词法对称，正确处理 `??`/`\?` 转义，让 `db.Select(&u, "WHERE name LIKE 'test?%' AND id IN (?)", ids)` 这类查询正常工作 |
-| **needsInRewrite 与 In 行为对齐** | 原版 autoIn 快速路径判定 `hasSliceArgs` 不解包 Valuer 也不识别切片指针，导致 `Valuer{val:[]int{...}}` 和 `&[]int{...}` 这类参数被错过 IN 展开。sqlex 改用与 In 内部一致的判断逻辑；并将函数改名为 `needsInRewrite`——更准确表达"是否需要 In 路径处理"（含 AsValue/AsList 解包），消除 `hasSliceArgs` 字面意思与 valueArg 包装语义之间的认知摩擦 |
-| **命名查询字符串字面量冒号** | 原版将字符串字面量中的冒号（如 IPv6 地址 `'a:6e:...'`、时间格式 `'HH:mm:ss'`）误识别为命名参数（[#872](https://github.com/jmoiron/sqlx/issues/872)）。sqlex 正确跳过单引号字符串内的冒号，包括 SQL 标准转义引号 `''` |
-| **命名查询双引号标识符** | 原版将双引号标识符中的冒号（如 PostgreSQL `"col:name"`）误识别为命名参数。sqlex 正确跳过双引号标识符内的冒号，包括转义双引号 `""` |
-| **命名查询反引号 + dollar quoting** | sqlex 在 `compileNamedQuery` 中跳过 MySQL 反引号标识符（`` `col:name` ``）和 PG dollar-quoted string（`$$:fake$$`、`$tag$:fake$tag$`）内的冒号，与 Rebind 完全对称 |
-| **命名参数解析误判兜底** | 原版若 `compileNamedQuery` 把字符串字面量/罕见词法中的 `:xxx` 误判为命名参数，由于 args 没有 `xxx`，会直接报 `could not find name xxx`，用户难以定位是 sqlx 的解析 bug。sqlex 在 `compileNamedQueryWith` 编译期一次成型：args 中存在的 `:name` 转为占位符并编号，不存在的原样保留为 `:name` 字面量（不计入编号），让原始 SQL 仍可能被 driver/server 正确执行。行为与 GORM 的 `@name` 处理一致（[#892](https://github.com/jmoiron/sqlx/issues/892) 相关延伸）。**注意**：这是 named 解析器边界 case 的安全网，不建议依赖它做业务级动态参数过滤；参数名应严格对齐 args |
-| **SQL 注释中冒号跳过** | 原版不处理注释。sqlex 跳过 `--` 行注释和 `/* */` 块注释中的冒号，不将其解析为命名参数 |
-| **统一词法扫描器** | 原版 `Rebind` / `In` / `compileNamedQuery` 三处各自实现"跳过字符串/标识符/注释"的逻辑，易出现"改一处漏两处"的漂移。sqlex 抽取统一词法扫描器（`lexer.go` 的 `scanSkipSegment`），三处复用同一份实现，保证对"哪些区域跳过"判定完全一致 |
-| **命名参数名规则收紧 + `:123` 误判修复** | 原版参数名允许数字开头，`:123` 被误识别为名为 `123` 的参数。sqlex 收紧规则为 `[A-Za-z_][A-Za-z0-9_.]*`（首字符须字母/下划线），`:123` 原样保留——既符合通用标识符规范，又避免与 Oracle `:N` / SQLite `?NNN` 位置占位符语义冲突 |
-| **Unicode 命名参数名（行为变更）** | 原版尝试支持 Unicode 参数名（按字节处理，实际不可靠）。sqlex **不支持** Unicode 命名参数名（如 `:名字`）——实践中参数名对应 struct 的 `db` tag 或 map key，几乎全是 ASCII。放弃此能力让词法统一按 byte 扫描，更简单更快。**注意**：SQL 其他位置的 Unicode（表名/列名/字符串值/参数值）完全不受影响，byte 扫描天然安全 |
-| **命名查询 `::` 处理** | 原版将 PostgreSQL 的类型转换语法 `::` 误判为命名参数。sqlex 正确跳过 `::` |
-| **错误信息增强** | 增强了多处错误信息的上下文，便于调试 |
-| **NamedStmt.Exec 返回值** | 原版 `NamedStmt.Exec` 未正确返回 `sql.Result`，sqlex 已修正 |
-| **Named 查询 Rebind 缺失** | `NamedGet`/`NamedSelect`/`NamedExec` 内部使用 `QUESTION` 绑定后，在无切片参数时缺少 Rebind 步骤，导致 PostgreSQL 等 `$N` 绑定类型的数据库上 Named 查询失败。sqlex 修复了 `autoIn` 函数，无论是否有切片参数均正确执行 Rebind |
-| **位置参数查询跨数据库失败** | 原版 `Select`/`Get`/`Exec` 等位置参数方法不做自动 Rebind，在 PostgreSQL 上使用 `?` 占位符会失败。sqlex 所有查询方法均自动 Rebind，实现跨数据库统一 `?` 风格 |
-| **位置参数 IN 切片展开覆盖不全** | 早期实现仅 `Select`/`Get` 接入 autoIn，`Exec`/`Queryx`/`QueryRowx`/`MustExec`/`NamedQuery` 漏掉，导致用户调用 `db.Exec("DELETE FROM t WHERE id IN (?)", ids)` 直接报参数不匹配。sqlex 已在 `BindExt`/`NamedExt` 全路径补齐，并写入接口契约保证防回归 |
 
 ## 测试
 
