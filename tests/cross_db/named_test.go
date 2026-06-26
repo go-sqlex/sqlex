@@ -374,7 +374,7 @@ func TestCrossDBNamedBatchUpdateFromValues(t *testing.T) {
 		seedCrossData(db, t)
 
 		updates := []struct {
-			ID    int `db:"id"`
+			ID     int `db:"id"`
 			NewAge int `db:"new_age"`
 		}{
 			{ID: 1, NewAge: 99},
