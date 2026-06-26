@@ -179,10 +179,7 @@ func FieldByIndexes(v reflect.Value, indexes []int) reflect.Value {
 	return v
 }
 
-// FieldByIndexesReadOnly returns a value for a particular struct traversal,
-// but is not concerned with allocating nil pointers because the value is
-// going to be used for reading and not setting. If a nil pointer is encountered,
-// it is returned as-is (does not panic or allocate).
+// FieldByIndexesReadOnly is like FieldByIndexes but does not allocate nil pointers.
 func FieldByIndexesReadOnly(v reflect.Value, indexes []int) reflect.Value {
 	for _, i := range indexes {
 		v = reflect.Indirect(v).Field(i)

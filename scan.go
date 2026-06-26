@@ -77,9 +77,7 @@ func scanAll(rows rowsi, dest any, structOnly bool) error {
 		scannable = isScannable(base)
 	)
 
-	// Reject sql.RawBytes: it references the driver's internal buffer, which is reused
-	// on each Next() call, causing data corruption when collecting multiple rows.
-	// See: https://github.com/jmoiron/sqlx/issues/931
+	// Reject sql.RawBytes to prevent buffer-reuse corruption. See #931.
 	if containsRawBytes(base) {
 		return errors.New("sqlex: sql.RawBytes is not allowed in Select/ScanAll (use []byte instead)")
 	}
