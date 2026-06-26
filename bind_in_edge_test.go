@@ -1024,3 +1024,290 @@ func TestIn_ArgCountMismatch(t *testing.T) {
 		}
 	})
 }
+
+// nilValuerValueReceiver has a Value() method with a value receiver.
+// A nil pointer to this type implements driver.Valuer, but calling Value()
+// panics because Go must dereference the nil pointer to satisfy the value receiver.
+type nilValuerValueReceiver struct {
+	val string
+}
+
+func (n nilValuerValueReceiver) Value() (driver.Value, error) {
+	return n.val, nil // accessing n.val dereferences the nil pointer
+}
+
+// nilValuerPointerReceiver has a Value() method with a pointer receiver that
+// explicitly checks for nil. A nil pointer to this type implements driver.Valuer
+// and calling Value() does NOT panic (the method handles nil itself).
+type nilValuerPointerReceiver struct {
+	val string
+}
+
+func (n *nilValuerPointerReceiver) Value() (driver.Value, error) {
+	if n == nil {
+		return nil, nil
+	}
+	return n.val, nil
+}
+
+// TestIn_NilValuerPointer_Safe verifies the fix for sqlx issue #952:
+// In() no longer panics when a nil pointer implementing driver.Valuer is passed.
+// Instead, nil pointer Valuers are treated as NULL (nil), mirroring
+// database/sql.callValuerValue.
+func TestIn_NilValuerPointer_Safe(t *testing.T) {
+	// Case 1: nil pointer + value receiver -> no panic, arg becomes nil (NULL).
+	// A slice in the 2nd arg forces needRewrite=true so the main loop processes v.
+	t.Run("nil_pointer_value_receiver_rewrite_path_no_panic", func(t *testing.T) {
+		var v *nilValuerValueReceiver
+		gotQ, gotArgs, err := In("SELECT * FROM t WHERE x = ? AND id IN (?)", v, []int{1, 2})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		wantQ := "SELECT * FROM t WHERE x = ? AND id IN (?, ?)"
+		if gotQ != wantQ {
+			t.Errorf("query mismatch:\n  got =%q\n  want=%q", gotQ, wantQ)
+		}
+		if len(gotArgs) != 3 {
+			t.Fatalf("args should be 3: got len=%d", len(gotArgs))
+		}
+		if gotArgs[0] != nil {
+			t.Errorf("args[0] should be nil (NULL from nil Valuer): got %v (%T)", gotArgs[0], gotArgs[0])
+		}
+		if gotArgs[1] != 1 || gotArgs[2] != 2 {
+			t.Errorf("args[1:3] should be [1, 2]: got %v", gotArgs[1:3])
+		}
+	})
+
+	// Case 2: nil pointer + value receiver, fast path (no slice) -> no panic.
+	// Fast path returns original args; driver layer (database/sql) handles nil Valuer.
+	t.Run("nil_pointer_value_receiver_fast_path_no_panic", func(t *testing.T) {
+		var v *nilValuerValueReceiver
+		gotQ, gotArgs, err := In("SELECT * FROM t WHERE x = ?", v)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if gotQ != "SELECT * FROM t WHERE x = ?" {
+			t.Errorf("query should not be rewritten: got %q", gotQ)
+		}
+		if len(gotArgs) != 1 {
+			t.Errorf("args should remain 1: got len=%d", len(gotArgs))
+		}
+	})
+
+	// Case 3: nil pointer + pointer receiver with nil check -> no panic (unchanged).
+	// Control case: the method handles nil itself, so this worked even before the fix.
+	t.Run("nil_pointer_pointer_receiver_nil_check_no_panic", func(t *testing.T) {
+		var v *nilValuerPointerReceiver
+		gotQ, gotArgs, err := In("SELECT * FROM t WHERE x = ?", v)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if gotQ != "SELECT * FROM t WHERE x = ?" {
+			t.Errorf("query should not be rewritten: got %q", gotQ)
+		}
+		if len(gotArgs) != 1 {
+			t.Errorf("args should remain 1: got len=%d", len(gotArgs))
+		}
+	})
+}
+
+// TestAsSliceForIn_NilPointerSlice verifies that asSliceForIn handles nil pointer
+// to slice types without panicking. A nil pointer to a slice is treated as an
+// empty slice (length 0), consistent with nil slice behavior — this lets In()
+// reject it in IN (?) context rather than silently passing a nil pointer to the driver.
+func TestAsSliceForIn_NilPointerSlice(t *testing.T) {
+	// nil pointer to []int -> treated as empty slice (length 0), returns true
+	var nilSlice *[]int
+	v, ok := asSliceForIn(nilSlice)
+	if !ok {
+		t.Fatal("nil pointer to slice should return true (treated as empty slice)")
+	}
+	if v.Kind() != reflect.Slice {
+		t.Fatalf("v.Kind() should be Slice: got %v", v.Kind())
+	}
+	if v.Len() != 0 {
+		t.Errorf("nil pointer slice should have length 0: got %d", v.Len())
+	}
+
+	// non-nil pointer to []int -> should return true, v is Slice (not Ptr)
+	slice := []int{1, 2, 3}
+	v, ok = asSliceForIn(&slice)
+	if !ok {
+		t.Fatal("non-nil pointer to slice should be expanded")
+	}
+	if v.Kind() != reflect.Slice {
+		t.Fatalf("v.Kind() should be Slice after dereference: got %v", v.Kind())
+	}
+	if v.Len() != 3 {
+		t.Errorf("v.Len() should be 3: got %d", v.Len())
+	}
+
+	// nil pointer to []byte -> should return false (no expansion, consistent with []byte rule)
+	var nilBytes *[]byte
+	_, ok = asSliceForIn(nilBytes)
+	if ok {
+		t.Errorf("nil pointer to []byte should not be expanded")
+	}
+
+	// non-nil pointer to []byte -> should return false ([]byte is a driver.Value type)
+	bytes := []byte{1, 2, 3}
+	_, ok = asSliceForIn(&bytes)
+	if ok {
+		t.Errorf("non-nil pointer to []byte should not be expanded ([]byte is driver.Value)")
+	}
+}
+
+// TestCallValuerValue_Acceptance is the acceptance test for sqlx #952 fix.
+// Validates callValuerValue directly across all Valuer receiver / nil combinations.
+func TestCallValuerValue_Acceptance(t *testing.T) {
+	t.Run("nil_pointer_value_receiver_returns_nil_nil", func(t *testing.T) {
+		var v *nilValuerValueReceiver // (*nilValuerValueReceiver)(nil), value receiver
+		got, err := callValuerValue(v)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != nil {
+			t.Errorf("nil pointer Valuer should return nil: got %v", got)
+		}
+	})
+
+	t.Run("nil_pointer_pointer_receiver_returns_nil_nil", func(t *testing.T) {
+		var v *nilValuerPointerReceiver // (*nilValuerPointerReceiver)(nil), pointer receiver
+		got, err := callValuerValue(v)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != nil {
+			t.Errorf("nil pointer Valuer should return nil: got %v", got)
+		}
+	})
+
+	t.Run("non_nil_value_receiver_calls_Value", func(t *testing.T) {
+		v := nilValuerValueReceiver{val: "hello"}
+		got, err := callValuerValue(v)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != "hello" {
+			t.Errorf("Value() should return 'hello': got %v", got)
+		}
+	})
+
+	t.Run("non_nil_pointer_receiver_calls_Value", func(t *testing.T) {
+		v := &nilValuerPointerReceiver{val: "world"}
+		got, err := callValuerValue(v)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != "world" {
+			t.Errorf("Value() should return 'world': got %v", got)
+		}
+	})
+
+	t.Run("fakeValuer_still_works", func(t *testing.T) {
+		// Regression: existing fakeValuer (value type, non-nil) must still work
+		v := fakeValuer{val: 42}
+		got, err := callValuerValue(v)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != 42 {
+			t.Errorf("Value() should return 42: got %v", got)
+		}
+	})
+}
+
+// TestIn_NilValuerAcceptance is the end-to-end acceptance test for sqlx #952 fix.
+// Validates real In() usage scenarios that previously panicked.
+func TestIn_NilValuerAcceptance(t *testing.T) {
+	t.Run("nil_Valuer_mixed_with_slice_IN_expand", func(t *testing.T) {
+		// Scenario: nil pointer Valuer as first arg, slice IN(?) as second.
+		// Before fix: panic at bind.go a.Value().
+		// After fix: nil Valuer → NULL, slice expands normally.
+		var nv *nilValuerValueReceiver
+		gotQ, gotArgs, err := In("SELECT * FROM t WHERE name = ? AND id IN (?)", nv, []int{1, 2, 3})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		wantQ := "SELECT * FROM t WHERE name = ? AND id IN (?, ?, ?)"
+		if gotQ != wantQ {
+			t.Errorf("query mismatch:\n  got =%q\n  want=%q", gotQ, wantQ)
+		}
+		// args: [nil (NULL from nil Valuer), 1, 2, 3]
+		if len(gotArgs) != 4 {
+			t.Fatalf("args should be 4: got len=%d", len(gotArgs))
+		}
+		if gotArgs[0] != nil {
+			t.Errorf("args[0] should be nil (NULL): got %v (%T)", gotArgs[0], gotArgs[0])
+		}
+		if gotArgs[1] != 1 || gotArgs[2] != 2 || gotArgs[3] != 3 {
+			t.Errorf("args[1:4] should be [1,2,3]: got %v", gotArgs[1:4])
+		}
+	})
+
+	t.Run("non_nil_Valuer_value_receiver_works", func(t *testing.T) {
+		// Regression: non-nil Valuer with value receiver must still call Value() correctly
+		v := &nilValuerValueReceiver{val: "test"}
+		gotQ, gotArgs, err := In("SELECT * FROM t WHERE name = ?", v)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if gotQ != "SELECT * FROM t WHERE name = ?" {
+			t.Errorf("query should not be rewritten: got %q", gotQ)
+		}
+		if len(gotArgs) != 1 {
+			t.Fatalf("args should be 1: got len=%d", len(gotArgs))
+		}
+		// fast path returns original args (Valuer not unwrapped)
+	})
+
+	t.Run("nil_pointer_slice_IN_errors_empty_slice", func(t *testing.T) {
+		// Scenario: nil pointer to slice in IN(?) context.
+		// Before fix: panic at v.Len() on Ptr Value.
+		// After fix: treated as empty slice → In() rejects with "empty slice" error
+		// (consistent with []int(nil) behavior, instead of silently passing nil pointer to driver).
+		var nilSlice *[]int
+		_, _, err := In("SELECT * FROM t WHERE id IN (?)", nilSlice)
+		if err == nil {
+			t.Fatal("expected error for nil pointer slice in IN (?) context, got nil")
+		}
+		if !strings.Contains(err.Error(), "empty slice") {
+			t.Errorf("error should contain 'empty slice': got %v", err)
+		}
+	})
+
+	t.Run("nil_pointer_slice_non_IN_no_error", func(t *testing.T) {
+		// Scenario: nil pointer to slice in non-IN context (WHERE x = ?).
+		// Treated as empty slice → no expansion, passed as single value (no error from In).
+		var nilSlice *[]int
+		gotQ, gotArgs, err := In("SELECT * FROM t WHERE x = ?", nilSlice)
+		if err != nil {
+			t.Fatalf("unexpected error in non-IN context: %v", err)
+		}
+		if gotQ != "SELECT * FROM t WHERE x = ?" {
+			t.Errorf("query should not be rewritten: got %q", gotQ)
+		}
+		if len(gotArgs) != 1 {
+			t.Errorf("args should be 1: got len=%d", len(gotArgs))
+		}
+	})
+
+	t.Run("non_nil_pointer_slice_IN_expands", func(t *testing.T) {
+		// Regression: non-nil pointer to slice must expand correctly
+		s := []int{10, 20}
+		gotQ, gotArgs, err := In("SELECT * FROM t WHERE id IN (?)", &s)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		wantQ := "SELECT * FROM t WHERE id IN (?, ?)"
+		if gotQ != wantQ {
+			t.Errorf("query mismatch:\n  got =%q\n  want=%q", gotQ, wantQ)
+		}
+		if len(gotArgs) != 2 {
+			t.Fatalf("args should be 2: got len=%d", len(gotArgs))
+		}
+		if gotArgs[0] != 10 || gotArgs[1] != 20 {
+			t.Errorf("args should be [10, 20]: got %v", gotArgs)
+		}
+	})
+}

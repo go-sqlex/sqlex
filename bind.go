@@ -148,6 +148,17 @@ func rebindBuff(bindType int, query string) string {
 	return rqb.String()
 }
 
+// callValuerValue mirrors database/sql.callValuerValue to safely handle nil
+// pointer receivers implementing driver.Valuer. Without this, calling Value()
+// on a (*T)(nil) where Value() has a value receiver panics due to nil pointer
+// dereference. See: https://github.com/jmoiron/sqlx/issues/952
+func callValuerValue(vr driver.Valuer) (driver.Value, error) {
+	if rv := reflect.ValueOf(vr); rv.Kind() == reflect.Ptr && rv.IsNil() {
+		return nil, nil
+	}
+	return vr.Value()
+}
+
 func asSliceForIn(i any) (v reflect.Value, ok bool) {
 	if i == nil {
 		return reflect.Value{}, false
@@ -164,7 +175,17 @@ func asSliceForIn(i any) (v reflect.Value, ok bool) {
 	// []byte is a driver.Value type so it should not be expanded
 	if t == reflect.TypeOf([]byte{}) {
 		return reflect.Value{}, false
+	}
 
+	// Nil pointer to slice: treat as empty slice (length 0), consistent with nil slice behavior.
+	// This lets In() reject it in IN (?) context (empty slice cannot be IN ()), instead of
+	// silently passing a nil pointer to the driver.
+	// Non-nil pointer: dereference at value level so callers get a Slice Value, not a Ptr.
+	if v.Kind() == reflect.Ptr {
+		if v.IsNil() {
+			return reflect.Zero(t), true
+		}
+		v = v.Elem()
 	}
 
 	return v, true
@@ -252,7 +273,7 @@ func In(query string, args ...any) (string, []any, error) {
 
 		if a, ok := arg.(driver.Valuer); ok {
 			var err error
-			arg, err = a.Value()
+			arg, err = callValuerValue(a)
 			if err != nil {
 				return "", nil, err
 			}

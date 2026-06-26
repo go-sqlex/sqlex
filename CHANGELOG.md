@@ -1,3 +1,8 @@
+## v1.5.3
+
+- **Fix nil `driver.Valuer` panic in `In`** (sqlx #952): nil pointer Valuers (e.g. `(*T)(nil)` with value-receiver `Value()`) no longer panic; they are treated as NULL, mirroring `database/sql.callValuerValue`.
+- **Fix nil pointer slice panic in `asSliceForIn`**: nil pointer to a slice type (e.g. `*[]int(nil)`) no longer panics; it is treated as "not a slice" (no expansion). Non-nil pointer slices are now correctly dereferenced.
+
 ## v1.5.2
 
 - **Hook unification**: `autoIn → Rebind → Hook` is now a unified pipeline. Begin/Commit/Rollback fire Hooks.
