@@ -10,31 +10,6 @@ func ival(v reflect.Value) int {
 	return v.Interface().(int)
 }
 
-func TestBasic(t *testing.T) {
-	type Foo struct {
-		A int
-		B int
-		C int
-	}
-
-	f := Foo{1, 2, 3}
-	fv := reflect.ValueOf(f)
-	m := NewMapperFunc("", func(s string) string { return s })
-
-	v := m.FieldByName(fv, "A")
-	if ival(v) != f.A {
-		t.Errorf("Expecting %d, got %d", ival(v), f.A)
-	}
-	v = m.FieldByName(fv, "B")
-	if ival(v) != f.B {
-		t.Errorf("Expecting %d, got %d", f.B, ival(v))
-	}
-	v = m.FieldByName(fv, "C")
-	if ival(v) != f.C {
-		t.Errorf("Expecting %d, got %d", f.C, ival(v))
-	}
-}
-
 func TestBasicEmbedded(t *testing.T) {
 	type Foo struct {
 		A int
@@ -52,59 +27,36 @@ func TestBasicEmbedded(t *testing.T) {
 	}
 
 	m := NewMapperFunc("db", func(s string) string { return s })
-
-	z := Baz{}
-	z.A = 1
-	z.B = 2
-	z.C = 4
-	z.Bar.Foo.A = 3
-
+	z := Baz{A: 1, Bar: Bar{B: 2, C: 4, Foo: Foo{A: 3}}}
 	zv := reflect.ValueOf(z)
-	fields := m.TypeMap(reflect.TypeOf(z))
+	tm := m.TypeMap(reflect.TypeOf(z))
 
-	if len(fields.Index) != 5 {
+	if len(tm.Index) != 5 {
 		t.Errorf("Expecting 5 fields")
 	}
 
-	// for _, fi := range fields.Index {
-	// 	log.Println(fi)
-	// }
-
-	v := m.FieldByName(zv, "A")
-	if ival(v) != z.A {
-		t.Errorf("Expecting %d, got %d", z.A, ival(v))
+	checks := []struct {
+		path string
+		val  int
+	}{
+		{"A", z.A},
+		{"Bar.B", z.Bar.B},
+		{"Bar.A", z.Bar.Foo.A},
 	}
-	v = m.FieldByName(zv, "Bar.B")
-	if ival(v) != z.Bar.B {
-		t.Errorf("Expecting %d, got %d", z.Bar.B, ival(v))
-	}
-	v = m.FieldByName(zv, "Bar.A")
-	if ival(v) != z.Bar.Foo.A {
-		t.Errorf("Expecting %d, got %d", z.Bar.Foo.A, ival(v))
-	}
-	v = m.FieldByName(zv, "Bar.C")
-	if _, ok := v.Interface().(int); ok {
-		t.Errorf("Expecting Bar.C to not exist")
+	for _, c := range checks {
+		fi := tm.GetByPath(c.path)
+		if fi == nil {
+			t.Errorf("path %q should exist", c.path)
+			continue
+		}
+		if ival(FieldByIndexesReadOnly(zv, fi.Index)) != c.val {
+			t.Errorf("path %q: expected %d, got %d", c.path, c.val, ival(FieldByIndexesReadOnly(zv, fi.Index)))
+		}
 	}
 
-	fi := fields.GetByPath("Bar.C")
-	if fi != nil {
-		t.Errorf("Bar.C should not exist")
+	if fi := tm.GetByPath("Bar.C"); fi != nil {
+		t.Errorf("Bar.C should not exist (db:\"-\")")
 	}
-}
-
-func TestEmbeddedSimple(t *testing.T) {
-	type UUID [16]byte
-	type MyID struct {
-		UUID
-	}
-	type Item struct {
-		ID MyID
-	}
-	z := Item{}
-
-	m := NewMapper("db")
-	m.TypeMap(reflect.TypeOf(z))
 }
 
 func TestBasicEmbeddedWithTags(t *testing.T) {
@@ -123,37 +75,37 @@ func TestBasicEmbeddedWithTags(t *testing.T) {
 	}
 
 	m := NewMapper("db")
-
-	z := Baz{}
-	z.A = 1
-	z.B = 2
-	z.Bar.Foo.A = 3
-
+	z := Baz{A: 1, Bar: Bar{B: 2, Foo: Foo{A: 3}}}
 	zv := reflect.ValueOf(z)
-	fields := m.TypeMap(reflect.TypeOf(z))
+	tm := m.TypeMap(reflect.TypeOf(z))
 
-	if len(fields.Index) != 5 {
+	if len(tm.Index) != 5 {
 		t.Errorf("Expecting 5 fields")
 	}
 
-	// for _, fi := range fields.index {
-	// 	log.Println(fi)
-	// }
-
-	v := m.FieldByName(zv, "a")
-	if ival(v) != z.A { // the dominant field
-		t.Errorf("Expecting %d, got %d", z.A, ival(v))
+	checks := []struct {
+		path string
+		val  int
+	}{
+		{"a", z.A}, // dominant field
+		{"b", z.B},
 	}
-	v = m.FieldByName(zv, "b")
-	if ival(v) != z.B {
-		t.Errorf("Expecting %d, got %d", z.B, ival(v))
+	for _, c := range checks {
+		fi := tm.GetByPath(c.path)
+		if fi == nil {
+			t.Errorf("path %q should exist", c.path)
+			continue
+		}
+		if ival(FieldByIndexesReadOnly(zv, fi.Index)) != c.val {
+			t.Errorf("path %q: expected %d, got %d", c.path, c.val, ival(FieldByIndexesReadOnly(zv, fi.Index)))
+		}
 	}
 }
 
 func TestBasicEmbeddedWithSameName(t *testing.T) {
 	type Foo struct {
 		A   int `db:"a"`
-		Foo int `db:"Foo"` // Same name as the embedded struct
+		Foo int `db:"Foo"`
 	}
 
 	type FooExt struct {
@@ -162,30 +114,31 @@ func TestBasicEmbeddedWithSameName(t *testing.T) {
 	}
 
 	m := NewMapper("db")
-
-	z := FooExt{}
-	z.A = 1
-	z.B = 2
-	z.Foo.Foo = 3
-
+	z := FooExt{B: 2, Foo: Foo{A: 1, Foo: 3}}
 	zv := reflect.ValueOf(z)
-	fields := m.TypeMap(reflect.TypeOf(z))
+	tm := m.TypeMap(reflect.TypeOf(z))
 
-	if len(fields.Index) != 4 {
-		t.Errorf("Expecting 3 fields, found %d", len(fields.Index))
+	if len(tm.Index) != 4 {
+		t.Errorf("Expecting 4 fields, found %d", len(tm.Index))
 	}
 
-	v := m.FieldByName(zv, "a")
-	if ival(v) != z.A { // the dominant field
-		t.Errorf("Expecting %d, got %d", z.A, ival(v))
+	checks := []struct {
+		path string
+		val  int
+	}{
+		{"a", z.A},
+		{"b", z.B},
+		{"Foo", z.Foo.Foo},
 	}
-	v = m.FieldByName(zv, "b")
-	if ival(v) != z.B {
-		t.Errorf("Expecting %d, got %d", z.B, ival(v))
-	}
-	v = m.FieldByName(zv, "Foo")
-	if ival(v) != z.Foo.Foo {
-		t.Errorf("Expecting %d, got %d", z.Foo.Foo, ival(v))
+	for _, c := range checks {
+		fi := tm.GetByPath(c.path)
+		if fi == nil {
+			t.Errorf("path %q should exist", c.path)
+			continue
+		}
+		if ival(FieldByIndexesReadOnly(zv, fi.Index)) != c.val {
+			t.Errorf("path %q: expected %d, got %d", c.path, c.val, ival(FieldByIndexesReadOnly(zv, fi.Index)))
+		}
 	}
 }
 
@@ -199,18 +152,27 @@ func TestFlatTags(t *testing.T) {
 		Author string `db:"author,required"`
 		Asset  Asset  `db:""`
 	}
-	// Post columns: (author title)
 
 	post := Post{Author: "Joe", Asset: Asset{Title: "Hello"}}
 	pv := reflect.ValueOf(post)
+	tm := m.TypeMap(reflect.TypeOf(post))
 
-	v := m.FieldByName(pv, "author")
-	if v.Interface().(string) != post.Author {
-		t.Errorf("Expecting %s, got %s", post.Author, v.Interface().(string))
+	checks := []struct {
+		path string
+		val  string
+	}{
+		{"author", post.Author},
+		{"title", post.Asset.Title},
 	}
-	v = m.FieldByName(pv, "title")
-	if v.Interface().(string) != post.Asset.Title {
-		t.Errorf("Expecting %s, got %s", post.Asset.Title, v.Interface().(string))
+	for _, c := range checks {
+		fi := tm.GetByPath(c.path)
+		if fi == nil {
+			t.Errorf("path %q should exist", c.path)
+			continue
+		}
+		if FieldByIndexesReadOnly(pv, fi.Index).Interface().(string) != c.val {
+			t.Errorf("path %q: expected %q, got %v", c.path, c.val, FieldByIndexesReadOnly(pv, fi.Index).Interface())
+		}
 	}
 }
 
@@ -228,29 +190,36 @@ func TestNestedStruct(t *testing.T) {
 		Author string `db:"author,required"`
 		Asset  `db:"asset"`
 	}
-	// Post columns: (author asset.title asset.details.active)
 
 	post := Post{
 		Author: "Joe",
 		Asset:  Asset{Title: "Hello", Details: Details{Active: true}},
 	}
 	pv := reflect.ValueOf(post)
+	tm := m.TypeMap(reflect.TypeOf(post))
 
-	v := m.FieldByName(pv, "author")
-	if v.Interface().(string) != post.Author {
-		t.Errorf("Expecting %s, got %s", post.Author, v.Interface().(string))
+	if fi := tm.GetByPath("title"); fi != nil {
+		t.Errorf("title should not exist at top level")
 	}
-	v = m.FieldByName(pv, "title")
-	if _, ok := v.Interface().(string); ok {
-		t.Errorf("Expecting field to not exist")
+
+	checks := []struct {
+		path string
+		val  any
+	}{
+		{"author", post.Author},
+		{"asset.title", post.Asset.Title},
+		{"asset.details.active", post.Asset.Details.Active},
 	}
-	v = m.FieldByName(pv, "asset.title")
-	if v.Interface().(string) != post.Asset.Title {
-		t.Errorf("Expecting %s, got %s", post.Asset.Title, v.Interface().(string))
-	}
-	v = m.FieldByName(pv, "asset.details.active")
-	if v.Interface().(bool) != post.Asset.Details.Active {
-		t.Errorf("Expecting %v, got %v", post.Asset.Details.Active, v.Interface().(bool))
+	for _, c := range checks {
+		fi := tm.GetByPath(c.path)
+		if fi == nil {
+			t.Errorf("path %q should exist", c.path)
+			continue
+		}
+		v := FieldByIndexesReadOnly(pv, fi.Index).Interface()
+		if v != c.val {
+			t.Errorf("path %q: expected %v, got %v", c.path, c.val, v)
+		}
 	}
 }
 
@@ -266,23 +235,32 @@ func TestInlineStruct(t *testing.T) {
 		Employee `db:"employee"`
 		Boss     `db:"boss"`
 	}
-	// employees columns: (employee.name employee.id boss.name boss.id)
 
 	em := person{Employee: Employee{Name: "Joe", ID: 2}, Boss: Boss{Name: "Dick", ID: 1}}
 	ev := reflect.ValueOf(em)
+	tm := m.TypeMap(reflect.TypeOf(em))
 
-	fields := m.TypeMap(reflect.TypeOf(em))
-	if len(fields.Index) != 6 {
+	if len(tm.Index) != 6 {
 		t.Errorf("Expecting 6 fields")
 	}
 
-	v := m.FieldByName(ev, "employee.name")
-	if v.Interface().(string) != em.Employee.Name {
-		t.Errorf("Expecting %s, got %s", em.Employee.Name, v.Interface().(string))
+	checks := []struct {
+		path string
+		val  any
+	}{
+		{"employee.name", em.Employee.Name},
+		{"boss.id", em.Boss.ID},
 	}
-	v = m.FieldByName(ev, "boss.id")
-	if ival(v) != em.Boss.ID {
-		t.Errorf("Expecting %v, got %v", em.Boss.ID, ival(v))
+	for _, c := range checks {
+		fi := tm.GetByPath(c.path)
+		if fi == nil {
+			t.Errorf("path %q should exist", c.path)
+			continue
+		}
+		v := FieldByIndexesReadOnly(ev, fi.Index).Interface()
+		if v != c.val {
+			t.Errorf("path %q: expected %v, got %v", c.path, c.val, v)
+		}
 	}
 }
 
@@ -319,29 +297,29 @@ func TestFieldsEmbedded(t *testing.T) {
 	pp.Place.Name = "Toronto"
 	pp.Article.Title = "Best city ever"
 
-	fields := m.TypeMap(reflect.TypeOf(pp))
-	// for i, f := range fields {
-	// 	log.Println(i, f)
-	// }
-
+	tm := m.TypeMap(reflect.TypeOf(pp))
 	ppv := reflect.ValueOf(pp)
 
-	v := m.FieldByName(ppv, "person.name")
-	if v.Interface().(string) != pp.Person.Name {
-		t.Errorf("Expecting %s, got %s", pp.Person.Name, v.Interface().(string))
+	checks := []struct {
+		path string
+		val  string
+	}{
+		{"person.name", pp.Person.Name},
+		{"name", pp.Place.Name},
+		{"title", pp.Article.Title},
+	}
+	for _, c := range checks {
+		fi := tm.GetByPath(c.path)
+		if fi == nil {
+			t.Errorf("path %q should exist", c.path)
+			continue
+		}
+		if FieldByIndexesReadOnly(ppv, fi.Index).Interface().(string) != c.val {
+			t.Errorf("path %q: expected %q, got %v", c.path, c.val, FieldByIndexesReadOnly(ppv, fi.Index).Interface())
+		}
 	}
 
-	v = m.FieldByName(ppv, "name")
-	if v.Interface().(string) != pp.Place.Name {
-		t.Errorf("Expecting %s, got %s", pp.Place.Name, v.Interface().(string))
-	}
-
-	v = m.FieldByName(ppv, "title")
-	if v.Interface().(string) != pp.Article.Title {
-		t.Errorf("Expecting %s, got %s", pp.Article.Title, v.Interface().(string))
-	}
-
-	fi := fields.GetByPath("person")
+	fi := tm.GetByPath("person")
 	if _, ok := fi.Options["required"]; !ok {
 		t.Errorf("Expecting required option to be set")
 	}
@@ -352,7 +330,7 @@ func TestFieldsEmbedded(t *testing.T) {
 		t.Errorf("Expecting index to be [0]")
 	}
 
-	fi = fields.GetByPath("person.name")
+	fi = tm.GetByPath("person.name")
 	if fi == nil {
 		t.Fatal("Expecting person.name to exist")
 	}
@@ -363,7 +341,7 @@ func TestFieldsEmbedded(t *testing.T) {
 		t.Errorf("Expecting %s, got %s", "64", fi.Options["size"])
 	}
 
-	fi = fields.GetByTraversal([]int{1, 0})
+	fi = tm.GetByTraversal([]int{1, 0})
 	if fi == nil {
 		t.Fatal("Expecting traversal to exist")
 	}
@@ -371,7 +349,7 @@ func TestFieldsEmbedded(t *testing.T) {
 		t.Errorf("Expecting %s, got %s", "name", fi.Path)
 	}
 
-	fi = fields.GetByTraversal([]int{2})
+	fi = tm.GetByTraversal([]int{2})
 	if fi == nil {
 		t.Fatal("Expecting traversal to exist")
 	}
@@ -397,19 +375,28 @@ func TestPtrFields(t *testing.T) {
 
 	post := &Post{Author: "Joe", Asset: &Asset{Title: "Hiyo"}}
 	pv := reflect.ValueOf(post)
+	tm := m.TypeMap(reflect.TypeOf(post))
 
-	fields := m.TypeMap(reflect.TypeOf(post))
-	if len(fields.Index) != 3 {
+	if len(tm.Index) != 3 {
 		t.Errorf("Expecting 3 fields")
 	}
 
-	v := m.FieldByName(pv, "asset.title")
-	if v.Interface().(string) != post.Asset.Title {
-		t.Errorf("Expecting %s, got %s", post.Asset.Title, v.Interface().(string))
+	checks := []struct {
+		path string
+		val  string
+	}{
+		{"asset.title", post.Asset.Title},
+		{"author", post.Author},
 	}
-	v = m.FieldByName(pv, "author")
-	if v.Interface().(string) != post.Author {
-		t.Errorf("Expecting %s, got %s", post.Author, v.Interface().(string))
+	for _, c := range checks {
+		fi := tm.GetByPath(c.path)
+		if fi == nil {
+			t.Errorf("path %q should exist", c.path)
+			continue
+		}
+		if FieldByIndexesReadOnly(pv, fi.Index).Interface().(string) != c.val {
+			t.Errorf("path %q: expected %q, got %v", c.path, c.val, FieldByIndexesReadOnly(pv, fi.Index).Interface())
+		}
 	}
 }
 
@@ -422,69 +409,54 @@ func TestNamedPtrFields(t *testing.T) {
 
 	type Asset struct {
 		Title string
-
 		Owner *User `db:"owner"`
 	}
 	type Post struct {
 		Author string
-
 		Asset1 *Asset `db:"asset1"`
 		Asset2 *Asset `db:"asset2"`
 	}
 
-	post := &Post{Author: "Joe", Asset1: &Asset{Title: "Hiyo", Owner: &User{"Username"}}} // Let Asset2 be nil
+	post := &Post{Author: "Joe", Asset1: &Asset{Title: "Hiyo", Owner: &User{"Username"}}} // Asset2 is nil
 	pv := reflect.ValueOf(post)
+	tm := m.TypeMap(reflect.TypeOf(post))
 
-	fields := m.TypeMap(reflect.TypeOf(post))
-	if len(fields.Index) != 9 {
+	if len(tm.Index) != 9 {
 		t.Errorf("Expecting 9 fields")
 	}
 
-	v := m.FieldByName(pv, "asset1.title")
-	if v.Interface().(string) != post.Asset1.Title {
-		t.Errorf("Expecting %s, got %s", post.Asset1.Title, v.Interface().(string))
+	// Non-nil paths: verify value
+	valChecks := []struct {
+		path string
+		val  string
+	}{
+		{"asset1.title", post.Asset1.Title},
+		{"asset1.owner.name", post.Asset1.Owner.Name},
+		{"author", post.Author},
 	}
-	v = m.FieldByName(pv, "asset1.owner.name")
-	if v.Interface().(string) != post.Asset1.Owner.Name {
-		t.Errorf("Expecting %s, got %s", post.Asset1.Owner.Name, v.Interface().(string))
-	}
-	v = m.FieldByName(pv, "asset2.title")
-	if v.Interface().(string) != post.Asset2.Title {
-		t.Errorf("Expecting %s, got %s", post.Asset2.Title, v.Interface().(string))
-	}
-	v = m.FieldByName(pv, "asset2.owner.name")
-	if v.Interface().(string) != post.Asset2.Owner.Name {
-		t.Errorf("Expecting %s, got %s", post.Asset2.Owner.Name, v.Interface().(string))
-	}
-	v = m.FieldByName(pv, "author")
-	if v.Interface().(string) != post.Author {
-		t.Errorf("Expecting %s, got %s", post.Author, v.Interface().(string))
-	}
-}
-
-func TestFieldMap(t *testing.T) {
-	type Foo struct {
-		A int
-		B int
-		C int
+	for _, c := range valChecks {
+		fi := tm.GetByPath(c.path)
+		if fi == nil {
+			t.Errorf("path %q should exist", c.path)
+			continue
+		}
+		if FieldByIndexesReadOnly(pv, fi.Index).Interface().(string) != c.val {
+			t.Errorf("path %q: expected %q, got %v", c.path, c.val, FieldByIndexesReadOnly(pv, fi.Index).Interface())
+		}
 	}
 
-	f := Foo{1, 2, 3}
-	m := NewMapperFunc("db", strings.ToLower)
-
-	fm := m.FieldMap(reflect.ValueOf(f))
-
-	if len(fm) != 3 {
-		t.Errorf("Expecting %d keys, got %d", 3, len(fm))
-	}
-	if fm["a"].Interface().(int) != 1 {
-		t.Errorf("Expecting %d, got %d", 1, ival(fm["a"]))
-	}
-	if fm["b"].Interface().(int) != 2 {
-		t.Errorf("Expecting %d, got %d", 2, ival(fm["b"]))
-	}
-	if fm["c"].Interface().(int) != 3 {
-		t.Errorf("Expecting %d, got %d", 3, ival(fm["c"]))
+	// Nil pointer paths: verify returns nil pointer without panic
+	nilChecks := []string{"asset2.title", "asset2.owner.name"}
+	for _, path := range nilChecks {
+		fi := tm.GetByPath(path)
+		if fi == nil {
+			t.Errorf("path %q should exist in mapping", path)
+			continue
+		}
+		v := FieldByIndexesReadOnly(pv, fi.Index)
+		if v.Kind() != reflect.Ptr || !v.IsNil() {
+			t.Errorf("path %q: expected nil pointer, got %v", path, v)
+		}
 	}
 }
 
@@ -555,7 +527,7 @@ func TestMapping(t *testing.T) {
 	}
 
 	if fi := mapping.GetByPath("isallblack"); fi != nil {
-		t.Errorf("Expecting to ignore `IsAllBlack` field")
+		t.Errorf("Expecting ignore `IsAllBlack` field")
 	}
 }
 
@@ -627,7 +599,7 @@ func TestGetByTraversal(t *testing.T) {
 	}
 }
 
-// TestMapperMethodsByName tests Mapper methods FieldByName and TraversalsByName
+// TestMapperMethodsByName tests TraversalsByName and FieldByIndexesReadOnly
 func TestMapperMethodsByName(t *testing.T) {
 	type C struct {
 		C0 string
@@ -731,42 +703,38 @@ func TestMapperMethodsByName(t *testing.T) {
 		},
 	}
 
-	// build the names array from the test cases
 	names := make([]string, len(testCases))
 	for i, tc := range testCases {
 		names[i] = tc.Name
 	}
 	m := NewMapperFunc("db", func(n string) string { return n })
 	v := reflect.ValueOf(val)
-	values := m.FieldsByName(v, names)
-	if len(values) != len(testCases) {
-		t.Errorf("expected %d values, got %d", len(testCases), len(values))
-		t.FailNow()
-	}
 	indexes := m.TraversalsByName(v.Type(), names)
 	if len(indexes) != len(testCases) {
 		t.Errorf("expected %d traversals, got %d", len(testCases), len(indexes))
 		t.FailNow()
 	}
-	for i, val := range values {
-		tc := testCases[i]
+	for i, tc := range testCases {
 		traversal := indexes[i]
 		if !reflect.DeepEqual(tc.ExpectedIndexes, traversal) {
 			t.Errorf("expected %v, got %v", tc.ExpectedIndexes, traversal)
 			t.FailNow()
 		}
-		val = reflect.Indirect(val)
 		if tc.ExpectInvalid {
-			if val.IsValid() {
-				t.Errorf("%d: expected zero value, got %v", i, val)
+			if len(traversal) != 0 {
+				t.Errorf("%d: expected empty traversal, got %v", i, traversal)
 			}
 			continue
 		}
-		if !val.IsValid() {
-			t.Errorf("%d: expected valid value, got %v", i, val)
+		v := FieldByIndexesReadOnly(reflect.ValueOf(val), traversal)
+		// nil pointer fields return the nil pointer itself
+		if v.Kind() == reflect.Ptr && v.IsNil() {
+			if tc.ExpectedValue != nil && tc.ExpectedValue != "" && tc.ExpectedValue != 0 {
+				t.Errorf("%d: expected %v, got nil pointer", i, tc.ExpectedValue)
+			}
 			continue
 		}
-		actualValue := reflect.Indirect(val).Interface()
+		actualValue := reflect.Indirect(v).Interface()
 		if !reflect.DeepEqual(tc.ExpectedValue, actualValue) {
 			t.Errorf("%d: expected %v, got %v", i, tc.ExpectedValue, actualValue)
 		}

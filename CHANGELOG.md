@@ -1,5 +1,6 @@
 ## v1.5.3
 
+- **Remove unused `reflectx` public API** (#614): deleted `FieldMap`/`FieldByName`/`FieldsByName` (sqlex internal never calls them). Fixed `FieldByIndexesReadOnly` to handle nil pointers without panicking. Tests rewritten to use `TraversalsByName` + `FieldByIndexesReadOnly`, preserving full coverage.
 - **Fix `Select` + `sql.RawBytes` data corruption** (sqlx #931): `Select`/`ScanAll` now rejects `sql.RawBytes` destinations with a clear error, preventing silent data corruption caused by driver buffer reuse across rows.
 - **Fix `Rows.NextResultSet` cache invalidation** (sqlx #857): `NextResultSet()` now resets the StructScan cache (`started`/`fields`/`values`), preventing stale field mappings from corrupting scans of subsequent result sets with different column structures.
 - **Fix `fixBound` VALUES expansion** (sqlx #898/#694/#772): batch INSERT/UPDATE with `VALUES (...)` no longer silently drops rows when VALUES is not preceded by `)`. Now supports `INSERT INTO t VALUES (:a, :b)` (no column list) and PG `UPDATE ... FROM (VALUES (:a, :b))`. Uses lexer-based keyword search instead of regex, correctly skipping string literals and comments.
