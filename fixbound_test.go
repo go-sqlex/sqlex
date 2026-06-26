@@ -109,3 +109,22 @@ func TestFixBound_ValuesExpansion(t *testing.T) {
 		}
 	})
 }
+
+func TestFindValuesKeyword_Boundary(t *testing.T) {
+	// Preceding boundary: ident before VALUES → not a keyword
+	if pos := findValuesKeyword(`INSERT INTO table_values (a) VALUES (:a)`); pos < 0 {
+		t.Fatal("should find VALUES after table_values")
+	}
+	// Following boundary: ident after VALUES → not a keyword
+	if pos := findValuesKeyword(`INSERT INTO t (a) values_list (:a)`); pos >= 0 {
+		t.Errorf("values_list should not match, got pos=%d", pos)
+	}
+	// Case insensitive
+	if pos := findValuesKeyword(`INSERT INTO t (a) values (:a)`); pos < 0 {
+		t.Fatal("lowercase values should be found")
+	}
+	// No VALUES at all
+	if pos := findValuesKeyword(`SELECT * FROM t`); pos >= 0 {
+		t.Errorf("should not find VALUES in SELECT, got pos=%d", pos)
+	}
+}

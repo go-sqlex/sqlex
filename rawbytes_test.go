@@ -50,6 +50,39 @@ func TestScanAll_RawBytes_Corruption(t *testing.T) {
 		}
 	})
 
+	// struct with *sql.RawBytes (pointer) field — should also be rejected
+	t.Run("struct_with_ptr_to_RawBytes_rejected", func(t *testing.T) {
+		type PtrRawRow struct {
+			Data *sql.RawBytes `db:"data"`
+		}
+		var result []PtrRawRow
+		err := pgdb.Select(&result, `SELECT data FROM rawbytes_test WHERE $1=1`, 1)
+		if err == nil {
+			t.Fatal("expected error rejecting *sql.RawBytes in struct field, got nil")
+		}
+		if !strings.Contains(err.Error(), "RawBytes") {
+			t.Errorf("error should mention RawBytes: got %v", err)
+		}
+	})
+
+	// nested struct with RawBytes — should be rejected recursively
+	t.Run("nested_struct_with_RawBytes_rejected", func(t *testing.T) {
+		type Inner struct {
+			Data sql.RawBytes `db:"data"`
+		}
+		type Outer struct {
+			Inner `db:""`
+		}
+		var result []Outer
+		err := pgdb.Select(&result, `SELECT data FROM rawbytes_test WHERE $1=1`, 1)
+		if err == nil {
+			t.Fatal("expected error rejecting nested RawBytes, got nil")
+		}
+		if !strings.Contains(err.Error(), "RawBytes") {
+			t.Errorf("error should mention RawBytes: got %v", err)
+		}
+	})
+
 	// Control: [][]byte works correctly (driver copies data for []byte)
 	t.Run("slice_of_byte_slice_works", func(t *testing.T) {
 		var result [][]byte
