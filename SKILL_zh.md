@@ -6,7 +6,7 @@ description: sqlex 是基于 jmoiron/sqlx 的 Go database/sql 现代化增强封
   Go 数据库操作（Get/Select/Exec/Queryx），SQL 查询结果映射结构体（StructScan/MapScan/SliceScan），
   NamedGet/NamedSelect/NamedExec 命名参数查询，IN 子句展开，
   数据库 Hook/拦截器/中间件/SQL 切面，JSONValue JSON 列类型，
-  事务管理 CloseWithErr/ExecFunc，NamedExt/BindExt 统一接口，
+  事务管理 CloseWithErr，NamedExt/BindExt 统一接口，
   Rebind 占位符转换，从 jmoiron/sqlx 迁移，
   PostgreSQL/MySQL/SQLite/SQL Server 跨数据库兼容，Preparex 预编译语句，PrepareNamed 命名预编译，
   reflectx 反射映射。
@@ -185,7 +185,7 @@ db.AddHook(SlowOnly(&AlertHook{}, 500*time.Millisecond))
 
 1. **Preparex 已自动 Rebind** — 无需手动区分数据库类型
 2. **NameMapper 只能在 `init()` 设置** — 运行时用 `DB.MapperFunc()` 替代
-3. **Tx 非并发安全** — 用 `Tx.ExecFunc()` 做并发保护
+3. **Tx 非并发安全** — 不要跨 goroutine 共享 Tx
 4. **Hook 同步执行** — 重量级操作应在 Hook 内异步
 5. **命名参数名限 ASCII** — `[A-Za-z_][A-Za-z0-9_.]*`；数字开头 `:123` 不被识别
 6. **Stmt/NamedStmt 不支持 IN 展开** — 占位符在 Prepare 时已固定，IN 查询请用 `db.Select`/`db.NamedSelect`
@@ -202,7 +202,6 @@ db.AddHook(SlowOnly(&AlertHook{}, 500*time.Millisecond))
 | JSONValue[T] | 泛型 JSON 列类型 |
 | NamedGet/NamedSelect | 便捷命名参数查询（内置 IN 展开） |
 | CloseWithErr | 根据 error 自动 Commit/Rollback |
-| ExecFunc | Tx 互斥锁保护下执行函数 |
 | NamedExt/BindExt | DB/Tx 统一编程接口 |
 | Select/Get 自动 IN | 检测切片参数 + IN 列表语境识别（仅 `IN (?)` 展开） |
 | StrictMode | 默认宽松，可开启严格检查 |
@@ -241,7 +240,7 @@ db.AddHook(SlowOnly(&AlertHook{}, 500*time.Millisecond))
 
 ### Tx 独有方法
 
-`CloseWithErr(err)`、`ExecFunc(fn)`、`Stmtx/StmtxContext`、`TryStmtx/TryStmtxContext`、`SetStrict/IsStrict`
+`CloseWithErr(err)`、`Stmtx/StmtxContext`、`TryStmtx/TryStmtxContext`、`SetStrict/IsStrict`
 
 ### DB 和 Tx 共有方法
 

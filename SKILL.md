@@ -8,7 +8,7 @@ description: sqlex is a modern enhancement wrapper for Go database/sql based on 
   (Get/Select/Exec/Queryx), SQL query result mapping to structs (StructScan/MapScan/SliceScan),
   NamedGet/NamedSelect/NamedExec named parameter queries, IN clause expansion,
   database Hook/interceptor/middleware/SQL aspects, JSONValue JSON column type,
-  transaction management CloseWithErr/ExecFunc, NamedExt/BindExt unified interfaces,
+  transaction management CloseWithErr, NamedExt/BindExt unified interfaces,
   Rebind placeholder conversion, migration from jmoiron/sqlx,
   PostgreSQL/MySQL/SQLite/SQL Server cross-database compatibility, Preparex prepared statements,
   PrepareNamed named prepared statements, reflectx reflection mapping.
@@ -188,7 +188,7 @@ db.AddHook(SlowOnly(&AlertHook{}, 500*time.Millisecond))
 
 1. **Preparex already auto-Rebinds** — No need to manually distinguish database types
 2. **NameMapper only set in `init()`** — Use `DB.MapperFunc()` at runtime instead
-3. **Tx is not concurrency-safe** — Use `Tx.ExecFunc()` for concurrency protection
+3. **Tx is not concurrency-safe** — Do not share Tx across goroutines
 4. **Hooks execute synchronously** — Heavy operations should be async inside Hooks
 5. **Named parameter names limited to ASCII** — `[A-Za-z_][A-Za-z0-9_.]*`; digit-starting `:123` not recognized
 6. **Stmt/NamedStmt do not support IN expansion** — placeholders fixed at Prepare time; use `db.Select`/`db.NamedSelect` for IN queries
@@ -205,7 +205,6 @@ db.AddHook(SlowOnly(&AlertHook{}, 500*time.Millisecond))
 | JSONValue[T] | Generic JSON column type |
 | NamedGet/NamedSelect | Convenient named parameter queries (built-in IN expansion) |
 | CloseWithErr | Auto Commit/Rollback based on error |
-| ExecFunc | Tx mutex-protected function execution |
 | NamedExt/BindExt | DB/Tx unified programming interface |
 | Select/Get auto-IN | Detects slice args + IN list context recognition (only `IN (?)` expands) |
 | StrictMode | Default lenient, can enable strict checking |
@@ -244,7 +243,7 @@ db.AddHook(SlowOnly(&AlertHook{}, 500*time.Millisecond))
 
 ### Tx-Only Methods
 
-`CloseWithErr(err)`, `ExecFunc(fn)`, `Stmtx/StmtxContext`, `TryStmtx/TryStmtxContext`, `SetStrict/IsStrict`
+`CloseWithErr(err)`, `Stmtx/StmtxContext`, `TryStmtx/TryStmtxContext`, `SetStrict/IsStrict`
 
 ### DB and Tx Shared Methods
 
