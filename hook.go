@@ -44,6 +44,11 @@ type QueryEvent struct {
 // Multiple Hooks execute BeforeQuery in registration order and AfterQuery in
 // reverse order (onion model).
 //
+// Hooks are registered globally via WithHooks / AddHook, or per call via
+// WithCallHooks. BeforeQuery may rewrite QueryEvent.Query and QueryEvent.Args;
+// the rewritten SQL must already use the driver's bindvar format, since Rebind
+// has run by that point.
+//
 // Note: For QueryRowx/QueryRowxContext methods, the Hook fires immediately after
 // QueryContext returns, before the row data is scanned. Therefore, QueryEvent.Error
 // only reflects errors from the query dispatch phase and does not include subsequent
@@ -62,6 +67,63 @@ type pipeline struct {
 	hooks      []Hook
 }
 
+// callHooksKey is the context key for call-scoped Hooks.
+type callHooksKey struct{}
+
+// WithCallHooks returns a copy of ctx carrying Hooks that apply only to operations
+// receiving that ctx, complementing the global Hooks registered via WithHooks / AddHook.
+// It enables per-request behaviour — dynamic schema selection, tenant routing, ad-hoc
+// SQL rewriting — without mutating a shared DB or changing any method signature.
+//
+// Only *Context methods observe these Hooks, since they alone receive a ctx; the
+// non-context helpers (Select, Get, Exec, …) run with context.Background() and
+// therefore see only the global Hooks.
+//
+// Global Hooks wrap call-scoped ones:
+//
+//	global BeforeQuery → call-scoped BeforeQuery → SQL execution
+//	                   → call-scoped AfterQuery  → global AfterQuery
+//
+// Successive calls replace rather than accumulate, matching context.WithValue
+// shadowing; pass multiple Hooks in one call to compose them:
+//
+//	ctx = sqlex.WithCallHooks(ctx, traceHook, schemaHook)
+//
+// Passing no Hooks returns ctx unchanged. A Tx from BeginTxx does not capture these
+// Hooks — pass the same ctx to its methods. Hooks must be safe for concurrent use.
+func WithCallHooks(ctx context.Context, hooks ...Hook) context.Context {
+	if len(hooks) == 0 {
+		return ctx
+	}
+	// Copy so the caller cannot mutate the stored chain afterwards.
+	return context.WithValue(ctx, callHooksKey{}, append([]Hook(nil), hooks...))
+}
+
+// getCallHooks returns the call-scoped Hooks carried by ctx, or nil if absent.
+func getCallHooks(ctx context.Context) []Hook {
+	if ctx == nil {
+		return nil
+	}
+	hooks, _ := ctx.Value(callHooksKey{}).([]Hook)
+	return hooks
+}
+
+// hookChain returns the Hooks to run for one operation: global first so they wrap
+// the call-scoped ones. The common case (no call-scoped Hooks) allocates nothing.
+func hookChain(ctx context.Context, global []Hook) []Hook {
+	call := getCallHooks(ctx)
+	switch {
+	case len(call) == 0:
+		return global
+	case len(global) == 0:
+		return call
+	default:
+		chain := make([]Hook, 0, len(global)+len(call))
+		chain = append(chain, global...)
+		return append(chain, call...)
+	}
+}
+
 // prepare runs the autoIn → Rebind → executeHooks pipeline on the query,
 // returning the prepared context, afterFunc, and event.
 func (p *pipeline) prepare(ctx context.Context, query string, args []any, op OpType) (context.Context, func(), *QueryEvent, error) {
@@ -71,7 +133,7 @@ func (p *pipeline) prepare(ctx context.Context, query string, args []any, op OpT
 	}
 	query = Rebind(BindType(p.driverName), query)
 	event := &QueryEvent{Query: query, Args: args, OperationType: op}
-	ctx, afterFunc := executeHooks(ctx, p.hooks, event)
+	ctx, afterFunc := executeHooks(ctx, hookChain(ctx, p.hooks), event)
 	return ctx, afterFunc, event, nil
 }
 

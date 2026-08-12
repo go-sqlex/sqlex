@@ -186,6 +186,9 @@ func (db *DB) MustBeginTxx(ctx context.Context, opts *sql.TxOptions) *Tx {
 // back. If the context is canceled, the sql package will roll back the
 // transaction. Tx.Commit will return an error if the context provided to
 // BeginTxx is canceled.
+//
+// Call-scoped Hooks (see WithCallHooks) are not captured by the returned Tx; pass
+// the same ctx to the Tx's *Context methods for them to apply.
 func (db *DB) BeginTxx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) {
 	ctx, afterFunc, event, err := db.prepare(ctx, "", nil, OpBegin)
 	if err != nil {

@@ -23,7 +23,7 @@
 - 🐛 **SQL 解析修复** — 字符串中的冒号、`::` 类型转换、注释中的 `?` 正确跳过。sqlx 的隐蔽解析 bug 全部修复。
 - 🎯 **统一接口** — `Ext` / `ExtContext` / `NamedExt` / `BindExt` / `Preparer` / `PreparerContext`，编译期校验。写 `func f(ext NamedExt)` 即可接受 DB、Tx 或 Conn。
 - 🔀 **IN 子句自动展开** — 切片参数在 `IN (?)` 中自动检测并展开，覆盖所有方法。
-- 🪝 **Hook 系统** — 可插拔 SQL 拦截器，用于日志、追踪、指标（洋葱模型）。
+- 🪝 **Hook 系统** — 可插拔 SQL 拦截器，用于日志、追踪、指标（洋葱模型），支持全局 Hook 和调用级 Hook 两种粒度。
 - 📦 **JSONValue[T]** — 泛型 JSON 列类型，自动序列化/反序列化。
 - 🛡️ **StrictMode** — 默认宽松（与 sqlx `Unsafe()` 一致），可选开启严格模式辅助调试。
 - 🛠️ **20+ Bug 修复** — 修复 jmoiron/sqlx 的数据损坏、panic、静默丢数据、跨库失败等 20 余个已知 Bug。详见[关键 Bug 修复](#来自-sqlx-的关键-bug-修复)。
@@ -135,6 +135,7 @@ sqlex 保留所有 sqlx API，并新增以下能力：
 | 功能 | 说明 |
 |------|------|
 | **Hook 切面** | `AddHook` — 可插拔 SQL 执行拦截器（洋葱模型） |
+| **调用级 Hook** | `WithCallHooks` — 通过 context 注入 Hook，支持动态 schema、租户路由等按请求定制行为 |
 | **JSONValue[T]** | `types.JSONValue[T]` — 泛型 JSON 列类型 |
 | **NamedGet/NamedSelect** | DB/Tx 上的命名参数便捷查询方法（内置 IN 展开） |
 | **CloseWithErr** | 根据 error 自动 Commit/Rollback |
@@ -523,6 +524,54 @@ func OnError(h sqlex.Hook) sqlex.Hook { /* BeforeQuery 透传，AfterQuery 判 e
 db.AddHook(SlowOnly(&AlertHook{}, 500*time.Millisecond))
 ```
 
+#### 调用级 Hook（WithCallHooks）
+
+`AddHook` 注册的是**全局** Hook，对 DB/Tx/Conn 上的所有操作生效。如需**按调用**定制行为（动态 schema、租户路由、临时 SQL 改写），用 `WithCallHooks` 将 Hook 附加到 `context.Context`——无需修改方法签名：
+
+```go
+// 自定义：将逻辑表名解析为实际 schema
+type SchemaHook struct{ Schema string }
+
+func (h *SchemaHook) BeforeQuery(ctx context.Context, e *sqlex.QueryEvent) context.Context {
+    e.Query = strings.ReplaceAll(e.Query, "{{schema}}", h.Schema)
+    return ctx
+}
+func (h *SchemaHook) AfterQuery(context.Context, *sqlex.QueryEvent) {}
+
+// 按请求指定 schema
+ctx := sqlex.WithCallHooks(r.Context(), &SchemaHook{Schema: tenant})
+db.SelectContext(ctx, &users, "SELECT * FROM {{schema}}.users WHERE age > ?", 18)
+```
+
+规则：
+
+| 规则 | 说明 |
+|---|---|
+| 作用范围 | 仅 `*Context` 方法感知（它们接收 ctx）；非 Context 方法（`Select`/`Get`/`Exec`）用 `context.Background()`，只看到全局 Hook |
+| 执行顺序 | 全局 Hook 包裹调用级 Hook：`全局 Before → 调用 Before → SQL → 调用 After → 全局 After` |
+| 嵌套 | **替换**而非累积（类似 `context.WithValue` 遮蔽）；一次传多个：`WithCallHooks(ctx, traceHook, schemaHook)` |
+| 事务 | `BeginTxx` 返回的 Tx **不捕获**调用级 Hook——需将同一 ctx 传给 `tx.XxxContext` |
+| 预编译 | `Stmt` 在**执行期**合并，非预编译期——预编译语句不会永久绑定某次调用的 Hook |
+| 性能 | 无调用级 Hook 时零额外分配（仅一次 `ctx.Value` 查找） |
+
+> **并发**：Hook 随 ctx 传播，可能被多个 goroutine 调用——实现须线程安全。改写 `e.Query` 时注意 SQL 已 Rebind，需用目标驱动占位符格式。
+
+**Pre-hook（`BeforeQuery`）用法** — 在 SQL 发送给 driver 之前执行；可改写 `e.Query`（重写 SQL）、`e.Args`（替换参数），或返回新 `ctx` 携带数据到 `AfterQuery`（如追踪 span、请求 ID、起始时间）：
+
+```go
+type TimerHook struct{}
+
+func (h *TimerHook) BeforeQuery(ctx context.Context, e *sqlex.QueryEvent) context.Context {
+    return context.WithValue(ctx, "start", time.Now()) // 携带到 AfterQuery
+}
+func (h *TimerHook) AfterQuery(ctx context.Context, e *sqlex.QueryEvent) {
+    start := ctx.Value("start").(time.Time)
+    e.Duration = time.Since(start) // 可用于日志/指标
+}
+```
+
+**Post-hook（`AfterQuery`）用法** — 在 SQL 返回之后执行；`e.Error`、`e.RowsAffected`、`e.LastInsertID` 已填充；适合日志、指标、错误上报、慢查询告警。
+
 ### StrictMode 严格模式
 
 ```go
@@ -593,6 +642,7 @@ user, err = getUserByName(conn, "Charlie")
 | 跨数据库占位符 | ❌ 需手动 Rebind | ✅ **所有方法**自动 Rebind，统一用 `?`（包括 `Preparex`） |
 | 字段匹配模式 | `unsafe` 字段（默认严格） | `StrictMode`（默认宽松，语义更直观） |
 | Hook 切面 | ❌ | ✅ `AddHook` 可插拔 SQL 执行拦截器 |
+| 调用级 Hook | ❌ | ✅ `WithCallHooks` 通过 context 注入，按请求定制行为 |
 | JSONValue[T] | ❌ | ✅ `types.JSONValue[T]` |
 | NamedGet/NamedSelect | ❌ | ✅ DB/Tx 便捷方法（内置 IN 展开） |
 | CloseWithErr | ❌ | ✅ 自动事务管理 |

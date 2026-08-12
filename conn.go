@@ -56,6 +56,9 @@ func (c *Conn) BindNamed(query string, arg any) (string, []any, error) {
 
 // BeginTxx begins a transaction and returns an *sqlex.Tx instead of an
 // *sql.Tx.
+//
+// Call-scoped Hooks (see WithCallHooks) are not captured by the returned Tx; pass
+// the same ctx to the Tx's *Context methods for them to apply.
 func (c *Conn) BeginTxx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) {
 	ctx, afterFunc, event, err := c.prepare(ctx, "", nil, OpBegin)
 	if err != nil {

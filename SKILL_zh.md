@@ -167,6 +167,14 @@ db.AddHook(SlowOnly(&AlertHook{}, 500*time.Millisecond))
 // SlowOnly / OnError 等装饰器自行实现，几行代码即可
 ```
 
+**调用级 Hook**（`WithCallHooks`）：将 Hook 附加到 `context.Context`，实现按请求定制行为（动态 schema、租户路由），不修改共享 DB、不改方法签名。仅 `*Context` 方法感知；全局 Hook 包裹调用级 Hook（`全局 Before → 调用 Before → SQL → 调用 After → 全局 After`）：
+```go
+ctx := sqlex.WithCallHooks(r.Context(), &SchemaHook{Schema: tenant})
+db.SelectContext(ctx, &users, "SELECT * FROM {{schema}}.users WHERE age > ?", 18)
+// BeginTxx 返回的 Tx 不捕获调用级 Hook — 需将同一 ctx 传给 tx.XxxContext
+// Stmt 在执行期合并，不会永久绑定某次调用的 Hook
+```
+
 ## 4. 最佳实践与常见陷阱
 
 ### ✅ 推荐做法
@@ -199,6 +207,7 @@ db.AddHook(SlowOnly(&AlertHook{}, 500*time.Millisecond))
 | 特性 | 说明 |
 |------|------|
 | Hook 切面 | `AddHook` 可插拔 SQL 执行拦截器（洋葱模型） |
+| 调用级 Hook | `WithCallHooks` 通过 context 注入 Hook，支持动态 schema/租户路由 |
 | JSONValue[T] | 泛型 JSON 列类型 |
 | NamedGet/NamedSelect | 便捷命名参数查询（内置 IN 展开） |
 | CloseWithErr | 根据 error 自动 Commit/Rollback |
@@ -236,7 +245,7 @@ db.AddHook(SlowOnly(&AlertHook{}, 500*time.Millisecond))
 
 ### DB 独有方法
 
-`Beginx/BeginTxx`、`Connx`、`AddHook`、`MapperFunc`、`Preparex/PreparexContext`、`PrepareNamed/PrepareNamedContext`、`SetStrict/IsStrict`
+`Beginx/BeginTxx`、`Connx`、`AddHook`、`WithCallHooks`、`MapperFunc`、`Preparex/PreparexContext`、`PrepareNamed/PrepareNamedContext`、`SetStrict/IsStrict`
 
 ### Tx 独有方法
 

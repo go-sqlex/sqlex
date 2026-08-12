@@ -170,6 +170,14 @@ db.AddHook(SlowOnly(&AlertHook{}, 500*time.Millisecond))
 // SlowOnly / OnError etc. are trivial to implement yourself
 ```
 
+**Per-call Hooks** (`WithCallHooks`): attach Hooks to a `context.Context` for per-request behaviour (dynamic schema, tenant routing) without mutating the shared DB or changing method signatures. Only `*Context` methods observe them; global Hooks wrap call-scoped ones (`global Before → call Before → SQL → call After → global After`):
+```go
+ctx := sqlex.WithCallHooks(r.Context(), &SchemaHook{Schema: tenant})
+db.SelectContext(ctx, &users, "SELECT * FROM {{schema}}.users WHERE age > ?", 18)
+// Tx from BeginTxx does NOT capture call-scoped Hooks — pass the same ctx to tx.XxxContext
+// Stmt merges at execution time, never permanently bound to a call's Hooks
+```
+
 ## 4. Best Practices and Common Pitfalls
 
 ### ✅ Recommended
@@ -202,6 +210,7 @@ db.AddHook(SlowOnly(&AlertHook{}, 500*time.Millisecond))
 | Feature | Description |
 |---------|-------------|
 | Hook aspects | `AddHook` pluggable SQL interceptors (onion model) |
+| Per-call Hooks | `WithCallHooks` inject Hooks via context for dynamic schema/tenant routing |
 | JSONValue[T] | Generic JSON column type |
 | NamedGet/NamedSelect | Convenient named parameter queries (built-in IN expansion) |
 | CloseWithErr | Auto Commit/Rollback based on error |
@@ -239,7 +248,7 @@ db.AddHook(SlowOnly(&AlertHook{}, 500*time.Millisecond))
 
 ### DB-Only Methods
 
-`Beginx/BeginTxx`, `Connx`, `AddHook`, `MapperFunc`, `Preparex/PreparexContext`, `PrepareNamed/PrepareNamedContext`, `SetStrict/IsStrict`
+`Beginx/BeginTxx`, `Connx`, `AddHook`, `WithCallHooks`, `MapperFunc`, `Preparex/PreparexContext`, `PrepareNamed/PrepareNamedContext`, `SetStrict/IsStrict`
 
 ### Tx-Only Methods
 

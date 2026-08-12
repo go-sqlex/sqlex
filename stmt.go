@@ -28,9 +28,10 @@ func (s *Stmt) Exec(args ...any) (sql.Result, error) {
 }
 
 // ExecContext executes the prepared statement with the given arguments.
+// Call-scoped Hooks carried by ctx (see WithCallHooks) apply to this call only.
 func (s *Stmt) ExecContext(ctx context.Context, args ...any) (sql.Result, error) {
 	event := &QueryEvent{Query: s.query, Args: args, OperationType: OpExec}
-	ctx, afterFunc := executeHooks(ctx, s.hooks, event)
+	ctx, afterFunc := executeHooks(ctx, hookChain(ctx, s.hooks), event)
 	result, err := s.Stmt.ExecContext(ctx, args...)
 	event.Error = err
 	if result != nil {
@@ -47,9 +48,10 @@ func (s *Stmt) Query(args ...any) (*sql.Rows, error) {
 }
 
 // QueryContext executes the prepared statement with the given arguments.
+// Call-scoped Hooks carried by ctx (see WithCallHooks) apply to this call only.
 func (s *Stmt) QueryContext(ctx context.Context, args ...any) (*sql.Rows, error) {
 	event := &QueryEvent{Query: s.query, Args: args, OperationType: OpQuery}
-	ctx, afterFunc := executeHooks(ctx, s.hooks, event)
+	ctx, afterFunc := executeHooks(ctx, hookChain(ctx, s.hooks), event)
 	r, err := s.Stmt.QueryContext(ctx, args...)
 	event.Error = err
 	afterFunc()

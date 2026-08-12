@@ -1,3 +1,16 @@
+## v1.5.4
+
+> Focus: per-call Hook injection — attach behaviour to a single call without touching method signatures.
+
+### ✨ Features
+
+- **`WithCallHooks(ctx, hooks...)`**: register Hooks on a `context.Context` so they apply only to operations receiving that context, complementing the global Hooks from `WithHooks`/`AddHook`. Enables dynamic schema selection, tenant routing and ad-hoc SQL rewriting on a shared `*DB` without mutating it and without any API change. All `*Context` methods (`SelectContext`, `GetContext`, `ExecContext`, `QueryxContext`, `QueryRowxContext`, the `Named*Context` family, `BeginTxx`, and the `Stmt` equivalents) observe them.
+  - Global Hooks wrap call-scoped ones: `global Before → call Before → SQL → call After → global After`.
+  - Successive calls replace rather than accumulate, matching `context.WithValue` shadowing; pass multiple Hooks in one call to compose them.
+  - `Tx` from `BeginTxx` does not capture them — pass the same context to the `Tx` methods.
+  - `Stmt` merges them at execution time, so a prepared statement is never permanently bound to a call's Hooks.
+  - Zero extra allocation when no call-scoped Hooks are present.
+
 ## v1.5.3
 
 > Focus: fix 5 critical bugs inherited from jmoiron/sqlx — data corruption, panics, and silent data loss.

@@ -23,7 +23,7 @@ What you get for free after migrating:
 - 🐛 **SQL parsing fixes** — colons in strings, `::` type casts, `?` in comments are correctly handled. Silent bugs from sqlx are gone.
 - 🎯 **Unified interfaces** — `Ext` / `ExtContext` / `NamedExt` / `BindExt` / `Preparer` / `PreparerContext` with compile-time checks. Write `func f(ext NamedExt)` and pass DB, Tx, or Conn.
 - 🔀 **Auto IN expansion** — slices in `IN (?)` detected and expanded automatically on all methods.
-- 🪝 **Hook system** — pluggable SQL interceptors for logging, tracing, metrics (onion model).
+- 🪝 **Hook system** — pluggable SQL interceptors for logging, tracing, metrics (onion model), with both global and per-call granularity.
 - 📦 **JSONValue[T]** — generic JSON column type with auto serialize/deserialize.
 - 🛡️ **StrictMode** — lenient by default (matching sqlx `Unsafe()`), optionally strict for debugging.
 - 🛠️ **20+ bug fixes** — data corruption, panics, silent data loss, and cross-database failures from jmoiron/sqlx, all fixed. See [Critical Bug Fixes](#critical-bug-fixes-from-sqlx).
@@ -134,6 +134,7 @@ sqlex preserves all sqlx APIs and adds the following capabilities:
 | Feature | Description |
 |---------|-------------|
 | **Hook aspects** | `AddHook` — pluggable SQL execution interceptors (onion model) |
+| **Per-call Hooks** | `WithCallHooks` — inject Hooks via context for dynamic schema, tenant routing, ad-hoc SQL rewriting without changing method signatures |
 | **JSONValue[T]** | `types.JSONValue[T]` — generic JSON column type |
 | **NamedGet/NamedSelect** | Named parameter convenience methods on DB/Tx (built-in IN expansion) |
 | **CloseWithErr** | Auto Commit/Rollback based on error |
@@ -489,6 +490,54 @@ func OnError(h sqlex.Hook) sqlex.Hook { /* BeforeQuery passthrough, AfterQuery c
 
 db.AddHook(SlowOnly(&AlertHook{}, 500*time.Millisecond))
 ```
+
+#### Per-Call Hooks (WithCallHooks)
+
+`AddHook` registers **global** Hooks that apply to all operations on a DB/Tx/Conn. For **per-call** behaviour injection (dynamic schema, tenant routing, ad-hoc SQL rewriting), use `WithCallHooks` to attach Hooks to a `context.Context` — no method signature changes needed:
+
+```go
+// Custom: resolve logical table name to actual schema
+type SchemaHook struct{ Schema string }
+
+func (h *SchemaHook) BeforeQuery(ctx context.Context, e *sqlex.QueryEvent) context.Context {
+    e.Query = strings.ReplaceAll(e.Query, "{{schema}}", h.Schema)
+    return ctx
+}
+func (h *SchemaHook) AfterQuery(context.Context, *sqlex.QueryEvent) {}
+
+// Per-request: each request specifies its own schema
+ctx := sqlex.WithCallHooks(r.Context(), &SchemaHook{Schema: tenant})
+db.SelectContext(ctx, &users, "SELECT * FROM {{schema}}.users WHERE age > ?", 18)
+```
+
+Rules:
+
+| Rule | Description |
+|---|---|
+| Scope | Only `*Context` methods observe them (they receive ctx); non-Context methods (`Select`/`Get`/`Exec`) use `context.Background()` and see only global Hooks |
+| Order | Global Hooks wrap call-scoped ones: `global Before → call Before → SQL → call After → global After` |
+| Nesting | **Replaces** (like `context.WithValue` shadowing); pass multiple at once: `WithCallHooks(ctx, traceHook, schemaHook)` |
+| Transaction | `BeginTxx` returns a `Tx` that does **not** capture call-scoped Hooks — pass the same ctx to `tx.XxxContext` |
+| Prepared | `Stmt` merges at **execution time**, not prepare time — a prepared statement is never permanently bound to a call's Hooks |
+| Performance | Zero extra allocation when no call-scoped Hooks are present (one `ctx.Value` lookup only) |
+
+> **Concurrency**: Hooks travel with ctx and may be called by multiple goroutines — implementations must be thread-safe. When rewriting `e.Query`, note that SQL has already been Rebound, so use the target driver's placeholder format.
+
+**Pre-hook (`BeforeQuery`) use cases** — runs before SQL is sent to the driver; can modify `e.Query` (rewrite SQL), `e.Args` (swap parameters), or return a new `ctx` to carry data to `AfterQuery` (e.g., tracing span, request ID, start timestamp):
+
+```go
+type TimerHook struct{}
+
+func (h *TimerHook) BeforeQuery(ctx context.Context, e *sqlex.QueryEvent) context.Context {
+    return context.WithValue(ctx, "start", time.Now()) // carry to AfterQuery
+}
+func (h *TimerHook) AfterQuery(ctx context.Context, e *sqlex.QueryEvent) {
+    start := ctx.Value("start").(time.Time)
+    e.Duration = time.Since(start) // available for logging/metrics
+}
+```
+
+**Post-hook (`AfterQuery`) use cases** — runs after SQL returns; `e.Error`, `e.RowsAffected`, `e.LastInsertID` are populated; suitable for logging, metrics, error reporting, slow-query alerting.
 
 ### StrictMode
 
