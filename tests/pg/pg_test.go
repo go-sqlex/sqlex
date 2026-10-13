@@ -565,8 +565,10 @@ func TestPGHook(t *testing.T) {
 		if capturedError == nil {
 			t.Error("expected hook to capture error from failed query")
 		}
-		if capturedDuration == 0 {
-			t.Error("expected hook to capture non-zero duration")
+		// Allow zero: on low-resolution timer platforms (e.g. Windows), a fast
+		// query can finish within the timer tick, yielding 0s. Reject only negatives.
+		if capturedDuration < 0 {
+			t.Error("expected hook to capture non-negative duration")
 		}
 	})
 }

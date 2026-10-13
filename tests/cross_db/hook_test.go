@@ -198,8 +198,10 @@ func TestCrossDBHookDuration(t *testing.T) {
 			t.Fatalf("[%s] no durations recorded", dbLabel(db))
 		}
 		d := hook.durations[0]
-		if d <= 0 {
-			t.Errorf("[%s] expected positive duration, got %v", dbLabel(db), d)
+		// Allow zero: on low-resolution timer platforms (e.g. Windows), an in-memory
+		// query can finish within the timer tick, yielding 0s. Reject only negatives.
+		if d < 0 {
+			t.Errorf("[%s] expected non-negative duration, got %v", dbLabel(db), d)
 		}
 		// 一般数据库查询应在合理时间内完成
 		if d > 30*time.Second {
