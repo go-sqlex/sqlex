@@ -1,3 +1,21 @@
+## v1.5.5
+
+> Focus: fixes from the code review in [#7](https://github.com/go-sqlex/sqlex/issues/7).
+
+### ✨ Features
+
+- **`Tx.CloseWithErrContext(ctx, err)`**: like `CloseWithErr`, but passes `ctx` to the commit/rollback Hooks, so tracing spans and call-scoped Hooks (`WithCallHooks`) observe the end of the transaction. `CloseWithErr` is unchanged and uses `context.Background()`.
+
+### 🐛 Bug Fixes
+
+- **Named binding panics on nil arguments**: `NamedExec`/`NamedQuery`/`Named`/`NamedStmt` and friends now return an error instead of panicking when given `nil`, a nil struct pointer, or a batch containing nil elements.
+- **`Stmt` ignored rewritten args**: `Stmt.ExecContext`/`QueryContext` now execute with `QueryEvent.Args` as rewritten by `BeforeQuery`, consistent with `DB`/`Tx`/`Conn`. The SQL of a prepared statement remains fixed.
+- **`types.BitBool.Scan` panics on empty input**: an empty `[]byte` now returns an error.
+- **`types.BitBool.Scan` misreads PostgreSQL `BIT(1)`**: PostgreSQL returns the text `"1"`, which was silently scanned as false; it is now read as true.
+- **`types.GzippedText.Scan` rejects SQL NULL**: scanning NULL now sets the value to nil instead of returning an error (behaviour change from jmoiron/sqlx).
+- **Batch binding picks a nested VALUES**: `fixBound` now prefers a top-level `VALUES`, so a `VALUES` inside a CTE no longer shadows the main INSERT's. `UPDATE ... FROM (VALUES ...)` is still supported.
+- **Flaky Hook duration tests on Windows** ([#8](https://github.com/go-sqlex/sqlex/issues/8)): a zero `QueryEvent.Duration` is accepted on low-resolution timers.
+
 ## v1.5.4
 
 > Focus: per-call Hook injection — attach behaviour to a single call without touching method signatures.

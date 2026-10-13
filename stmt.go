@@ -32,7 +32,7 @@ func (s *Stmt) Exec(args ...any) (sql.Result, error) {
 func (s *Stmt) ExecContext(ctx context.Context, args ...any) (sql.Result, error) {
 	event := &QueryEvent{Query: s.query, Args: args, OperationType: OpExec}
 	ctx, afterFunc := executeHooks(ctx, hookChain(ctx, s.hooks), event)
-	result, err := s.Stmt.ExecContext(ctx, args...)
+	result, err := s.Stmt.ExecContext(ctx, event.Args...)
 	event.Error = err
 	if result != nil {
 		event.RowsAffected, _ = result.RowsAffected()
@@ -52,7 +52,7 @@ func (s *Stmt) Query(args ...any) (*sql.Rows, error) {
 func (s *Stmt) QueryContext(ctx context.Context, args ...any) (*sql.Rows, error) {
 	event := &QueryEvent{Query: s.query, Args: args, OperationType: OpQuery}
 	ctx, afterFunc := executeHooks(ctx, hookChain(ctx, s.hooks), event)
-	r, err := s.Stmt.QueryContext(ctx, args...)
+	r, err := s.Stmt.QueryContext(ctx, event.Args...)
 	event.Error = err
 	afterFunc()
 	return r, err

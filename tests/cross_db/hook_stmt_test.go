@@ -171,3 +171,64 @@ func TestCrossDBHookStmtInTx(t *testing.T) {
 		}
 	})
 }
+
+// aliceToBobHook rewrites the arg "Alice" to "Bob" in BeforeQuery. It assigns a new
+// slice rather than mutating in place, which would also alter the caller's args.
+type aliceToBobHook struct{}
+
+func (aliceToBobHook) BeforeQuery(ctx context.Context, event *sqlex.QueryEvent) context.Context {
+	args := make([]any, len(event.Args))
+	for i, a := range event.Args {
+		if a == "Alice" {
+			a = "Bob"
+		}
+		args[i] = a
+	}
+	event.Args = args
+	return ctx
+}
+
+func (aliceToBobHook) AfterQuery(context.Context, *sqlex.QueryEvent) {}
+
+// TestCrossDBHookStmt_ArgsRewrite — 验证 Stmt 执行使用 BeforeQuery 改写后的参数（#7 F-002）
+func TestCrossDBHookStmt_ArgsRewrite(t *testing.T) {
+	runWithSchema(crossSchema, t, func(db *sqlex.DB, t *testing.T, now string) {
+		crossDBOnly(t)
+		seedCrossData(db, t)
+
+		dbCopy := sqlex.NewDB(db.DB, db.DriverName())
+		dbCopy.AddHook(aliceToBobHook{})
+
+		var (
+			stmt *sqlex.Stmt
+			user CrossUser
+			age  int
+			err  error
+		)
+
+		// QueryContext path
+		if stmt, err = dbCopy.Preparex("SELECT * FROM cross_users WHERE name = ?"); err != nil {
+			t.Fatalf("[%s] Preparex failed: %v", dbLabel(db), err)
+		}
+		defer stmt.Close()
+		if err = stmt.Get(&user, "Alice"); err != nil {
+			t.Fatalf("[%s] Stmt.Get failed: %v", dbLabel(db), err)
+		}
+		if user.Name != "Bob" {
+			t.Errorf("[%s] Stmt.QueryContext should use rewritten args, got %s", dbLabel(db), user.Name)
+		}
+
+		// ExecContext path
+		if stmt, err = dbCopy.Preparex("UPDATE cross_users SET age = ? WHERE name = ?"); err != nil {
+			t.Fatalf("[%s] Preparex failed: %v", dbLabel(db), err)
+		}
+		defer stmt.Close()
+		stmt.MustExec(99, "Alice")
+		if err = db.Get(&age, "SELECT age FROM cross_users WHERE name = ?", "Bob"); err != nil {
+			t.Fatalf("[%s] Get Bob's age failed: %v", dbLabel(db), err)
+		}
+		if age != 99 {
+			t.Errorf("[%s] Stmt.ExecContext should update Bob via rewritten args, got age %d", dbLabel(db), age)
+		}
+	})
+}

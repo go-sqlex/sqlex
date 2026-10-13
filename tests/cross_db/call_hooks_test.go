@@ -11,6 +11,7 @@ package cross_db_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -425,6 +426,32 @@ func TestCrossDBCallHooksTxRouting(t *testing.T) {
 		}
 		if got != "from-b" {
 			t.Errorf("[%s] Tx routing: got %q, want %q", dbLabel(db), got, "from-b")
+		}
+	})
+}
+
+// ========================================================
+// TestCrossDBCallHooksTxCloseWithErrContext
+// CloseWithErrContext 将 ctx 透传给 commit/rollback Hook，Tx 无全局 Hook 时调用级 Hook 也生效（#7 F-003）
+// ========================================================
+func TestCrossDBCallHooksTxCloseWithErrContext(t *testing.T) {
+	runWithSchema(callHookSchema, t, func(db *sqlex.DB, t *testing.T, now string) {
+		crossDBOnly(t)
+
+		for wantOp, bizErr := range map[sqlex.OpType]error{
+			sqlex.OpCommit:   nil,
+			sqlex.OpRollback: errors.New("biz failed"),
+		} {
+			hook := &countingHook{name: "call"}
+			if tx, err := db.Beginx(); err != nil { // db has no global Hooks
+				t.Fatalf("[%s] Beginx failed: %v", dbLabel(db), err)
+			} else {
+				tx.CloseWithErrContext(sqlex.WithCallHooks(context.Background(), hook), bizErr)
+			}
+
+			if q := hook.queries(); len(q) != 1 || q[0] != "TX "+string(wantOp) {
+				t.Errorf("[%s] call-scoped hook should see [TX %s] once, got %v", dbLabel(db), wantOp, q)
+			}
 		}
 	})
 }

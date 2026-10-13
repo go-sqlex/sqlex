@@ -47,7 +47,8 @@ type QueryEvent struct {
 // Hooks are registered globally via WithHooks / AddHook, or per call via
 // WithCallHooks. BeforeQuery may rewrite QueryEvent.Query and QueryEvent.Args;
 // the rewritten SQL must already use the driver's bindvar format, since Rebind
-// has run by that point.
+// has run by that point. For a prepared Stmt, only Args rewrites take effect,
+// since its SQL is fixed at prepare time.
 //
 // Note: For QueryRowx/QueryRowxContext methods, the Hook fires immediately after
 // QueryContext returns, before the row data is scanned. Therefore, QueryEvent.Error

@@ -367,8 +367,10 @@ func TestCrossDBNamedBatchInsert(t *testing.T) {
 func TestCrossDBNamedBatchUpdateFromValues(t *testing.T) {
 	runWithSchema(crossSchema, t, func(db *sqlex.DB, t *testing.T, now string) {
 		crossDBOnly(t)
+		// FROM (VALUES ...) is PostgreSQL-specific syntax. Use return rather than t.Skip,
+		// which would end the test for the remaining databases sharing this t.
 		if !isPostgres(db) {
-			t.Skip("FROM (VALUES ...) is PostgreSQL-specific syntax")
+			return
 		}
 
 		seedCrossData(db, t)

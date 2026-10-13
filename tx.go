@@ -311,29 +311,35 @@ func (tx *Tx) NamedExecContext(ctx context.Context, query string, arg any) (sql.
 
 // CloseWithErr automatically commits or rolls back the transaction based on the error value.
 // Whether the commit or rollback succeeds or fails, the result is reported via Hook.
+// It is equivalent to CloseWithErrContext with context.Background().
 func (tx *Tx) CloseWithErr(err error) {
+	tx.CloseWithErrContext(context.Background(), err)
+}
+
+// CloseWithErrContext is like CloseWithErr, but passes ctx to the Hooks, so that
+// tracing spans and call-scoped Hooks (see WithCallHooks) observe the commit/rollback.
+func (tx *Tx) CloseWithErrContext(ctx context.Context, err error) {
 	if err != nil {
 		if rbErr := tx.Rollback(); rbErr != nil {
-			tx.fireTxHook(OpRollback, rbErr)
+			tx.fireTxHook(ctx, OpRollback, rbErr)
 			return
 		}
-		tx.fireTxHook(OpRollback, err)
+		tx.fireTxHook(ctx, OpRollback, err)
 		return
 	}
-	tx.fireTxHook(OpCommit, tx.Commit())
+	tx.fireTxHook(ctx, OpCommit, tx.Commit())
 }
 
 // fireTxHook reports a transaction operation (commit/rollback) via Hook. A nil err indicates success.
-func (tx *Tx) fireTxHook(op OpType, err error) {
-	if len(tx.hooks) == 0 {
+func (tx *Tx) fireTxHook(ctx context.Context, op OpType, err error) {
+	var hooks = hookChain(ctx, tx.hooks)
+	if len(hooks) == 0 {
 		return
 	}
-	event := &QueryEvent{
+	_, afterFunc := executeHooks(ctx, hooks, &QueryEvent{
 		Query:         "TX " + string(op),
 		OperationType: op,
 		Error:         err,
-	}
-	ctx := context.Background()
-	_, afterFunc := executeHooks(ctx, tx.hooks, event)
+	})
 	afterFunc()
 }

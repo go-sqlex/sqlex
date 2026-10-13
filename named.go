@@ -246,7 +246,7 @@ func convertMapStringInterface(v any) (map[string]any, bool) {
 	var m map[string]any
 	mtype := reflect.TypeOf(m)
 	t := reflect.TypeOf(v)
-	if !t.ConvertibleTo(mtype) {
+	if t == nil || !t.ConvertibleTo(mtype) {
 		return nil, false
 	}
 	return reflect.ValueOf(v).Convert(mtype).Interface().(map[string]any), true
@@ -263,12 +263,15 @@ func bindAnyArgs(names []string, arg any, m *reflectx.Mapper) ([]any, error) {
 // bindArgs extracts values from a struct in the order of names. names have already been
 // filtered at compile time by compileNamedQueryWith to only include fields that exist in the struct.
 func bindArgs(names []string, arg any, m *reflectx.Mapper) ([]any, error) {
-	arglist := make([]any, 0, len(names))
-	var v reflect.Value
-	for v = reflect.ValueOf(arg); v.Kind() == reflect.Ptr; {
-		v = v.Elem()
+	var (
+		arglist = make([]any, 0, len(names))
+		v       reflect.Value
+		err     error
+	)
+	if v, err = derefArg(arg); err != nil {
+		return nil, err
 	}
-	err := m.TraversalsByNameFunc(v.Type(), names, func(i int, t []int) error {
+	err = m.TraversalsByNameFunc(v.Type(), names, func(i int, t []int) error {
 		if len(t) == 0 {
 			return nil // Defensive fallback; should not be reached in theory
 		}
@@ -304,6 +307,19 @@ func nameExistsInStruct(arg any, m *reflectx.Mapper) func(string) bool {
 	}
 	tm := m.TypeMap(v.Type())
 	return func(name string) bool { _, ok := tm.Names[name]; return ok }
+}
+
+// derefArg dereferences pointers in arg, returning an error instead of panicking
+// when arg is nil or a nil pointer.
+func derefArg(arg any) (reflect.Value, error) {
+	v := reflect.ValueOf(arg)
+	for v.Kind() == reflect.Ptr && !v.IsNil() {
+		v = v.Elem()
+	}
+	if !v.IsValid() || v.Kind() == reflect.Ptr {
+		return v, fmt.Errorf("sqlex: cannot bind named parameters from nil %T", arg)
+	}
+	return v, nil
 }
 
 // bindStruct binds named parameters in a query using struct fields. Field names are mapped
@@ -344,19 +360,34 @@ func findMatchingClosingBracketIndex(s string) int {
 }
 
 // findValuesKeyword finds VALUES keyword position, skipping string literals/comments.
-// Does not require ) before VALUES (fixes #898).
+// Does not require ) before VALUES (fixes #898). A top-level VALUES wins, so one
+// inside a CTE does not shadow the main INSERT's; otherwise the first match is
+// used, e.g. UPDATE ... FROM (VALUES ...).
 func findValuesKeyword(s string) int {
+	depth, first := 0, -1
 	for i := 0; i < len(s); {
 		if end, _, skip := scanSkipSegment(s, i); skip {
 			i = end
 			continue
 		}
-		if isKeywordAt(s, i, "VALUES") {
-			return i
+		switch s[i] {
+		case '(':
+			depth++
+		case ')':
+			depth--
+		default:
+			if isKeywordAt(s, i, "VALUES") {
+				if depth == 0 {
+					return i
+				}
+				if first < 0 {
+					first = i
+				}
+			}
 		}
 		i++
 	}
-	return -1
+	return first
 }
 
 // isKeywordAt checks keyword match at pos with word boundary (case-insensitive).
@@ -598,6 +629,9 @@ func Named(query string, arg any) (string, []any, error) {
 }
 
 func bindNamedMapper(bindType int, query string, arg any, m *reflectx.Mapper) (string, []any, error) {
+	if _, err := derefArg(arg); err != nil {
+		return "", nil, err
+	}
 	t := reflect.TypeOf(arg)
 	k := t.Kind()
 	switch {
