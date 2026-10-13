@@ -4,7 +4,11 @@
 
 ### ✨ Features
 
-- **`Tx.CloseWithErrContext(ctx, err)`**: like `CloseWithErr`, but passes `ctx` to the commit/rollback Hooks, so tracing spans and call-scoped Hooks (`WithCallHooks`) observe the end of the transaction. `CloseWithErr` is unchanged and uses `context.Background()`.
+- **`Tx.CloseWithErrContext(ctx, err)`**: like `CloseWithErr`, but passes `ctx` to the commit/rollback Hooks, so tracing spans and call-scoped Hooks (`WithCallHooks`) observe the end of the transaction. `CloseWithErr` uses `context.Background()`.
+
+### ⚠️ Behaviour Changes
+
+- **`Tx.CloseWithErr` now returns an `error`**: a failed Commit was previously only reported via Hook, so callers could not tell the transaction was lost. It now returns the Commit error when `err` is nil, otherwise `err` itself (joined with the Rollback error if the rollback fails). Assign it back in the defer: `defer func() { err = tx.CloseWithErr(err) }()`. Existing calls that ignore the result still compile; code that stores the method as a `func(error)` or declares an interface with `CloseWithErr(error)` must be updated.
 
 ### 🐛 Bug Fixes
 

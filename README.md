@@ -370,7 +370,7 @@ func createUserWithProfile(db *sqlex.DB, user User, profile Profile) (err error)
     if err != nil {
         return err
     }
-    defer func() { tx.CloseWithErr(err) }() // auto Commit or Rollback
+    defer func() { err = tx.CloseWithErr(err) }() // auto Commit or Rollback; a Commit failure is returned
 
     _, err = tx.NamedExec(`INSERT INTO users (name) VALUES (:name)`, user)
     if err != nil {
@@ -378,6 +378,10 @@ func createUserWithProfile(db *sqlex.DB, user User, profile Profile) (err error)
     }
 
     _, err = tx.NamedExec(`INSERT INTO profiles (user_name, bio) VALUES (:user_name, :bio)`, profile)
+    if err != nil {
+        return err
+    }
+
     return nil // CloseWithErr detects err == nil, auto Commit
 }
 ```

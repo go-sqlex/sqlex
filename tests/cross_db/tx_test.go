@@ -2,6 +2,7 @@
 package cross_db_test
 
 import (
+	"database/sql"
 	"errors"
 	"testing"
 
@@ -71,7 +72,9 @@ func TestCrossDBCloseWithErr(t *testing.T) {
 				t.Fatalf("[%s] Beginx failed: %v", dbLabel(db), err)
 			}
 			tx.MustExec(`INSERT INTO cross_users (name, email, age) VALUES ('CloseTxCommit', 'close@commit.com', 30)`)
-			tx.CloseWithErr(nil) // 应自动提交
+			if err = tx.CloseWithErr(nil); err != nil { // 应自动提交
+				t.Fatalf("[%s] CloseWithErr(nil) should return nil on commit, got %v", dbLabel(db), err)
+			}
 
 			var count int
 			db.Get(&count, "SELECT COUNT(*) FROM cross_users WHERE name = 'CloseTxCommit'")
@@ -87,12 +90,38 @@ func TestCrossDBCloseWithErr(t *testing.T) {
 				t.Fatalf("[%s] Beginx failed: %v", dbLabel(db), err)
 			}
 			tx.MustExec(`INSERT INTO cross_users (name, email, age) VALUES ('CloseTxRollback', 'close@rollback.com', 30)`)
-			tx.CloseWithErr(errors.New("some error")) // 应自动回滚
+			bizErr := errors.New("some error")
+			if err = tx.CloseWithErr(bizErr); err != bizErr { // 应自动回滚，并原样返回业务错误
+				t.Errorf("[%s] CloseWithErr(err) should return the original err, got %v", dbLabel(db), err)
+			}
 
 			var count int
 			db.Get(&count, "SELECT COUNT(*) FROM cross_users WHERE name = 'CloseTxRollback'")
 			if count != 0 {
 				t.Errorf("[%s] CloseWithErr(err) should rollback, but data found", dbLabel(db))
+			}
+		})
+
+		// Commit 失败需返回给调用方：先手动提交，再次 Commit 必然返回 sql.ErrTxDone
+		t.Run("CommitFailureReturned", func(t *testing.T) {
+			tx := db.MustBegin()
+			if err := tx.Commit(); err != nil {
+				t.Fatalf("[%s] Commit failed: %v", dbLabel(db), err)
+			}
+			if err := tx.CloseWithErr(nil); !errors.Is(err, sql.ErrTxDone) {
+				t.Errorf("[%s] CloseWithErr(nil) should return the commit error, got %v", dbLabel(db), err)
+			}
+		})
+
+		// Rollback 失败时业务错误与回滚错误都需保留
+		t.Run("RollbackFailureJoined", func(t *testing.T) {
+			tx := db.MustBegin()
+			if err := tx.Rollback(); err != nil {
+				t.Fatalf("[%s] Rollback failed: %v", dbLabel(db), err)
+			}
+			bizErr := errors.New("some error")
+			if err := tx.CloseWithErr(bizErr); !errors.Is(err, bizErr) || !errors.Is(err, sql.ErrTxDone) {
+				t.Errorf("[%s] CloseWithErr(err) should join err and rollback error, got %v", dbLabel(db), err)
 			}
 		})
 	})
