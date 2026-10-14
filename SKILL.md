@@ -112,7 +112,7 @@ tx, err := db.Beginx()
 if err != nil {
     return err
 }
-defer func() { tx.CloseWithErr(err) }()  // err==nil → Commit, err!=nil → Rollback
+defer func() { err = tx.CloseWithErr(err) }()  // err==nil → Commit, err!=nil → Rollback; Commit failure is returned
 
 _, err = tx.NamedExec(`INSERT INTO users (name) VALUES (:name)`, User{Name: "Bob"})
 if err != nil {
@@ -183,7 +183,7 @@ db.SelectContext(ctx, &users, "SELECT * FROM {{schema}}.users WHERE age > ?", 18
 ### ✅ Recommended
 
 1. **Use unified `?` placeholder** — All query methods auto-Rebind
-2. **Use `CloseWithErr` for transactions** — `defer func() { tx.CloseWithErr(err) }()`
+2. **Use `CloseWithErr` for transactions** — `defer func() { err = tx.CloseWithErr(err) }()`
 3. **Use Context methods in production** — `GetContext`/`SelectContext` for timeout control
 4. **Close prepared statements** — `Stmt`/`NamedStmt` hold `sql.Stmt`, use `defer stmt.Close()` to avoid resource leaks
 5. **NamedSelect + IN** — No need to manually call `In()`

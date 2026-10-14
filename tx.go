@@ -3,6 +3,7 @@ package sqlex
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"reflect"
 
@@ -311,29 +312,43 @@ func (tx *Tx) NamedExecContext(ctx context.Context, query string, arg any) (sql.
 
 // CloseWithErr automatically commits or rolls back the transaction based on the error value.
 // Whether the commit or rollback succeeds or fails, the result is reported via Hook.
-func (tx *Tx) CloseWithErr(err error) {
+//
+// It returns the commit error when err is nil, otherwise err itself (joined with the
+// rollback error if the rollback fails), so it can be assigned back in a defer:
+//
+//	defer func() { err = tx.CloseWithErr(err) }()
+//
+// It is equivalent to CloseWithErrContext with context.Background().
+func (tx *Tx) CloseWithErr(err error) error {
+	return tx.CloseWithErrContext(context.Background(), err)
+}
+
+// CloseWithErrContext is like CloseWithErr, but passes ctx to the Hooks, so that
+// tracing spans and call-scoped Hooks (see WithCallHooks) observe the commit/rollback.
+func (tx *Tx) CloseWithErrContext(ctx context.Context, err error) error {
 	if err != nil {
 		if rbErr := tx.Rollback(); rbErr != nil {
-			tx.fireTxHook(OpRollback, rbErr)
-			return
+			tx.fireTxHook(ctx, OpRollback, rbErr)
+			return errors.Join(err, rbErr)
 		}
-		tx.fireTxHook(OpRollback, err)
-		return
+		tx.fireTxHook(ctx, OpRollback, err)
+		return err
 	}
-	tx.fireTxHook(OpCommit, tx.Commit())
+	err = tx.Commit()
+	tx.fireTxHook(ctx, OpCommit, err)
+	return err
 }
 
 // fireTxHook reports a transaction operation (commit/rollback) via Hook. A nil err indicates success.
-func (tx *Tx) fireTxHook(op OpType, err error) {
-	if len(tx.hooks) == 0 {
+func (tx *Tx) fireTxHook(ctx context.Context, op OpType, err error) {
+	var hooks = hookChain(ctx, tx.hooks)
+	if len(hooks) == 0 {
 		return
 	}
-	event := &QueryEvent{
+	_, afterFunc := executeHooks(ctx, hooks, &QueryEvent{
 		Query:         "TX " + string(op),
 		OperationType: op,
 		Error:         err,
-	}
-	ctx := context.Background()
-	_, afterFunc := executeHooks(ctx, tx.hooks, event)
+	})
 	afterFunc()
 }

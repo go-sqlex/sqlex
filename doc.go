@@ -11,7 +11,7 @@
 //   - Auto Rebind: all query methods use ? placeholders uniformly, auto-converting to target database format
 //   - Transparent IN: Select/Get/NamedGet/NamedSelect auto-expand slice parameters
 //   - StrictMode: optional strict mode detecting query result / struct field mismatches
-//   - CloseWithErr: auto-commits or rolls back transactions based on error; result reported via Hook
+//   - CloseWithErr: auto-commits or rolls back transactions based on error; result returned and reported via Hook
 //   - NamedExt/BindExt: unified interfaces, DB and Tx are interchangeable
 //   - Functional Options: Open/Connect support WithHooks/WithStrictMode etc.
 //

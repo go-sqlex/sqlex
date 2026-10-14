@@ -391,7 +391,7 @@ func createUserWithProfile(db *sqlex.DB, user User, profile Profile) (err error)
     if err != nil {
         return err
     }
-    defer func() { tx.CloseWithErr(err) }()  // 自动 Commit 或 Rollback
+    defer func() { err = tx.CloseWithErr(err) }()  // 自动 Commit 或 Rollback；Commit 失败会返回给调用方
 
     _, err = tx.NamedExec(`INSERT INTO users (name) VALUES (:name)`, user)
     if err != nil {

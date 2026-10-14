@@ -423,3 +423,24 @@ func TestBindArray_EdgeCases(t *testing.T) {
 		}
 	})
 }
+
+// TestBindNamed_NilArg verifies that nil arguments return an error instead of panicking (#7 F-001).
+func TestBindNamed_NilArg(t *testing.T) {
+	type user struct {
+		Name string `db:"name"`
+	}
+	const query = `INSERT INTO t (name) VALUES (:name)`
+	var nilUser *user
+	// Batch elements go through bindAnyArgs, the same path NamedStmt uses.
+	for name, arg := range map[string]any{
+		"untyped_nil":                   nil,
+		"nil_struct_pointer":            nilUser,
+		"pointer_to_nil_struct_pointer": &nilUser,
+		"nil_pointer_element_in_batch":  []*user{{Name: "a"}, nil},
+		"nil_element_in_any_batch":      []any{user{Name: "a"}, nil},
+	} {
+		if _, _, err := Named(query, arg); err == nil {
+			t.Errorf("[%s] expected error for nil argument, got nil", name)
+		}
+	}
+}

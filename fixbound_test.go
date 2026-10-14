@@ -108,6 +108,16 @@ func TestFixBound_ValuesExpansion(t *testing.T) {
 			t.Errorf("args should be 2 (2 users * 1 named param): got len=%d", len(args))
 		}
 	})
+
+	// === #7 F-004: VALUES inside a CTE must not shadow the main INSERT's ===
+	t.Run("cte_values_not_misidentified", func(t *testing.T) {
+		const want = `WITH v AS (VALUES (1)) INSERT INTO t (name, age) VALUES (?, ?),(?, ?)`
+		if q, _, err := Named(`WITH v AS (VALUES (1)) INSERT INTO t (name, age) VALUES (:name, :age)`, users); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		} else if q != want {
+			t.Errorf("query mismatch:\n  got =%q\n  want=%q", q, want)
+		}
+	})
 }
 
 func TestFindValuesKeyword_Boundary(t *testing.T) {
@@ -128,3 +138,4 @@ func TestFindValuesKeyword_Boundary(t *testing.T) {
 		t.Errorf("should not find VALUES in SELECT, got pos=%d", pos)
 	}
 }
+

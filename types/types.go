@@ -26,10 +26,13 @@ func (g GzippedText) Value() (driver.Value, error) {
 }
 
 // Scan implements the sql.Scanner interface, ungzipping the value coming off
-// the wire and storing the raw result in the GzippedText.
+// the wire and storing the raw result in the GzippedText. A SQL NULL sets it to nil.
 func (g *GzippedText) Scan(src any) error {
 	var source []byte
 	switch src := src.(type) {
+	case nil:
+		*g = nil
+		return nil
 	case string:
 		source = []byte(src)
 	case []byte:
@@ -182,12 +185,13 @@ func (b BitBool) Value() (driver.Value, error) {
 }
 
 // Scan implements the sql.Scanner interface,
-// and turns the bitfield incoming from MySQL into a BitBool
+// and turns the bitfield incoming from MySQL into a BitBool.
+// PostgreSQL returns BIT(1) as the text "1"/"0", which is also accepted.
 func (b *BitBool) Scan(src any) error {
 	v, ok := src.([]byte)
-	if !ok {
+	if !ok || len(v) == 0 {
 		return errors.New("bad []byte type assertion")
 	}
-	*b = v[0] == 1
+	*b = v[0] == 1 || v[0] == '1'
 	return nil
 }

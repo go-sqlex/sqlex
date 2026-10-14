@@ -109,7 +109,7 @@ tx, err := db.Beginx()
 if err != nil {
     return err
 }
-defer func() { tx.CloseWithErr(err) }()  // err==nil → Commit, err!=nil → Rollback
+defer func() { err = tx.CloseWithErr(err) }()  // err==nil → Commit, err!=nil → Rollback；Commit 失败会返回
 
 _, err = tx.NamedExec(`INSERT INTO users (name) VALUES (:name)`, User{Name: "Bob"})
 if err != nil {
@@ -180,7 +180,7 @@ db.SelectContext(ctx, &users, "SELECT * FROM {{schema}}.users WHERE age > ?", 18
 ### ✅ 推荐做法
 
 1. **使用统一 `?` 占位符** — 所有查询方法自动 Rebind
-2. **事务使用 `CloseWithErr`** — `defer func() { tx.CloseWithErr(err) }()`
+2. **事务使用 `CloseWithErr`** — `defer func() { err = tx.CloseWithErr(err) }()`
 3. **生产环境使用 Context 方法** — `GetContext`/`SelectContext` 支持超时控制
 4. **预编译语句必须 Close** — `Stmt`/`NamedStmt` 持有 `sql.Stmt`，用完 `defer stmt.Close()` 避免资源泄漏
 5. **NamedSelect + IN** — 无需手动调用 `In()`

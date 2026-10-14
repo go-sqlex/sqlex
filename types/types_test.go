@@ -48,6 +48,9 @@ func TestJSONText(t *testing.T) {
 	if err != nil {
 		t.Errorf("Was not expecting an error")
 	}
+	if string(v.([]byte)) != "null" {
+		t.Errorf("Empty JSONText should be written as null, got %q", v)
+	}
 
 	err = (&j).Scan(v)
 	if err != nil {
@@ -241,5 +244,36 @@ func TestBitBool(t *testing.T) {
 	}
 	if b {
 		t.Errorf("Was expecting the bool we sent in (false), got %v", b)
+	}
+}
+
+// TestBitBool_Scan_Empty verifies that an empty []byte returns an error instead of panicking (#7 F-005).
+func TestBitBool_Scan_Empty(t *testing.T) {
+	var b BitBool
+	if err := b.Scan([]byte{}); err == nil {
+		t.Error("expected error scanning empty []byte, got nil")
+	}
+}
+
+// TestBitBool_Scan_PostgresText verifies the text form PostgreSQL returns for BIT(1).
+func TestBitBool_Scan_PostgresText(t *testing.T) {
+	for src, want := range map[string]BitBool{"1": true, "0": false} {
+		var b BitBool
+		if err := b.Scan([]byte(src)); err != nil {
+			t.Errorf("Scan(%q) failed: %v", src, err)
+		} else if b != want {
+			t.Errorf("Scan(%q) = %v, want %v", src, b, want)
+		}
+	}
+}
+
+// TestGzippedText_Scan_Null verifies that scanning SQL NULL resets GzippedText to nil (#7 F-007).
+func TestGzippedText_Scan_Null(t *testing.T) {
+	g := GzippedText("stale")
+	if err := g.Scan(nil); err != nil {
+		t.Fatalf("Scan(nil) should not fail, got: %v", err)
+	}
+	if g != nil {
+		t.Errorf("Scan(nil) should reset to nil, got %q", g)
 	}
 }
