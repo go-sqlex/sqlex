@@ -63,6 +63,8 @@ type Mapper struct {
 	// cache stores the mapping from type to StructMap, added on demand in TypeMap with no eviction.
 	// In normal applications, the number of struct types is limited (typically dozens to hundreds),
 	// so the cache size has a natural upper bound and does not need LRU eviction or manual clearing.
+	// Exception: types built at runtime (e.g. reflect.StructOf per request) are distinct cache keys
+	// and grow it without bound; use a short-lived dedicated Mapper for those.
 	cache      map[reflect.Type]*StructMap
 	tagName    string
 	tagMapFunc func(string) string
@@ -212,14 +214,18 @@ func mustBe(v kinder, expected reflect.Kind) {
 	}
 }
 
-// methodName returns the caller of the function calling methodName
+// methodName returns the caller of the function calling methodName.
+// CallersFrames (unlike FuncForPC) accounts for inlined frames.
 func methodName() string {
-	pc, _, _, _ := runtime.Caller(2)
-	f := runtime.FuncForPC(pc)
-	if f == nil {
+	var pcs [1]uintptr
+	if runtime.Callers(3, pcs[:]) == 0 {
 		return "unknown method"
 	}
-	return f.Name()
+	frame, _ := runtime.CallersFrames(pcs[:]).Next()
+	if frame.Function == "" {
+		return "unknown method"
+	}
+	return frame.Function
 }
 
 type typeQueue struct {
@@ -255,18 +261,14 @@ func parseName(field reflect.StructField, tagName string, mapFunc, tagMapFunc ma
 		return "", fieldName
 	}
 
-	// if this tag is not set using the normal convention in the tag,
-	// then return the fieldname..  this check is done because according
-	// to the reflect documentation:
-	//    If the tag does not have the conventional format,
-	//    the value returned by Get is unspecified.
-	// which doesn't sound great.
-	if !strings.Contains(string(field.Tag), tagName+":") {
+	// Lookup distinguishes "key absent" from "key present with empty value".
+	// A substring check on "db:" is not enough: it also matches values of other
+	// keys (json:"db:x") or suffixed keys (mydb:"x"), which used to yield an
+	// empty fieldName and silently drop the column mapping.
+	var ok bool
+	if tag, ok = field.Tag.Lookup(tagName); !ok {
 		return "", fieldName
 	}
-
-	// at this point we're fairly sure that we have a tag, so lets pull it out
-	tag = field.Tag.Get(tagName)
 
 	// if we have a mapper function, call it on the whole tag
 	// XXX: this is a change from the old version, which pulled out the name
@@ -282,20 +284,14 @@ func parseName(field reflect.StructField, tagName string, mapFunc, tagMapFunc ma
 	return tag, fieldName
 }
 
-// parseOptions parses options out of a tag string, skipping the name
+// parseOptions parses options out of a tag string, skipping the name.
+// Values are split on the first "=" only, so "default=a=b" yields "a=b".
 func parseOptions(tag string) map[string]string {
-	parts := strings.Split(tag, ",")
+	parts := strings.Split(tag, ",")[1:]
 	options := make(map[string]string, len(parts))
-	if len(parts) > 1 {
-		for _, opt := range parts[1:] {
-			// short circuit potentially expensive split op
-			if strings.Contains(opt, "=") {
-				kv := strings.Split(opt, "=")
-				options[kv[0]] = kv[1]
-				continue
-			}
-			options[opt] = ""
-		}
+	for _, opt := range parts {
+		k, v, _ := strings.Cut(opt, "=")
+		options[k] = v
 	}
 	return options
 }
@@ -303,11 +299,10 @@ func parseOptions(tag string) map[string]string {
 // getMapping returns a mapping for the t type, using the tagName, mapFunc and
 // tagMapFunc to determine the canonical names of fields.
 func getMapping(t reflect.Type, tagName string, mapFunc, tagMapFunc mapf) *StructMap {
-	m := []*FieldInfo{}
+	var m []*FieldInfo
 
 	root := &FieldInfo{}
-	queue := []typeQueue{}
-	queue = append(queue, typeQueue{Deref(t), root, ""})
+	queue := []typeQueue{{Deref(t), root, ""}}
 
 QueueLoop:
 	for len(queue) != 0 {

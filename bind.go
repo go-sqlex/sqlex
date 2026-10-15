@@ -1,7 +1,6 @@
 package sqlex
 
 import (
-	"bytes"
 	"database/sql/driver"
 	"errors"
 	"reflect"
@@ -122,28 +121,6 @@ func Rebind(bindType int, query string) string {
 	return string(rqb)
 }
 
-// rebindBuff is kept for benchmarking comparison.
-func rebindBuff(bindType int, query string) string {
-	if bindType != DOLLAR {
-		return query
-	}
-
-	b := make([]byte, 0, len(query))
-	rqb := bytes.NewBuffer(b)
-	j := 1
-	for _, r := range query {
-		if r == '?' {
-			rqb.WriteRune('$')
-			rqb.WriteString(strconv.Itoa(j))
-			j++
-		} else {
-			rqb.WriteRune(r)
-		}
-	}
-
-	return rqb.String()
-}
-
 // callValuerValue mirrors database/sql.callValuerValue. See #952.
 func callValuerValue(vr driver.Valuer) (driver.Value, error) {
 	if rv := reflect.ValueOf(vr); rv.Kind() == reflect.Ptr && rv.IsNil() {
@@ -164,7 +141,9 @@ func asSliceForIn(i any) (v reflect.Value, ok bool) {
 		return reflect.Value{}, false
 	}
 
-	if t == reflect.TypeOf([]byte{}) {
+	// Any byte slice ([]byte, json.RawMessage, named `type Hash []byte`) is a
+	// single driver value, mirroring database/sql's DefaultParameterConverter (#10 F-0012).
+	if t.Elem().Kind() == reflect.Uint8 {
 		return reflect.Value{}, false
 	}
 

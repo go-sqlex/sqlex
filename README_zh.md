@@ -284,7 +284,7 @@ db.Exec(`INSERT INTO t (json_col) VALUES (?)`, data) // []byte 是 driver 标准
 
 1. `sqlex.AsValue(v)` / `sqlex.AsList(s)` — 显式声明，最高优先级
 2. `driver.Valuer` 接口（包括 `pq.Array`）— 整体当单值
-3. `[]byte` — driver 标准类型，整体当单值
+3. 字节切片（`[]byte`、`json.RawMessage`、`type Hash []byte` 这类具名类型）— driver 标准类型，整体当单值
 4. 严格 `(?)` 形态命中 + 切片 — 自动展开
 5. 其他位置 + 切片 — 不展开，作为单值传给 driver（多数情况下 driver 会报类型错）
 
@@ -524,9 +524,13 @@ func OnError(h sqlex.Hook) sqlex.Hook { /* BeforeQuery 透传，AfterQuery 判 e
 db.AddHook(SlowOnly(&AlertHook{}, 500*time.Millisecond))
 ```
 
+> **注册时机**：`AddHook` 是启动期 API，非并发安全——须在 DB 被多个 goroutine 使用之前调用。`Tx`/`Conn`/`Stmt` 创建时会复制 Hook 链，之后追加的 Hook 对它们不生效。推荐在 `Open`/`Connect` 时用 `sqlex.WithHooks(...)`，按请求注入用下文的 `WithCallHooks`。
+>
+> **观测范围**：Hook 只观测实际发往 driver 的操作。此前发生的参数错误——IN 展开（`IN (?)` 传空切片、`AsList` 传非切片、占位符与参数个数不一致）和命名参数绑定——直接返回给调用方，不触发任何 Hook。如需统计，请在调用方处理。
+
 #### 调用级 Hook（WithCallHooks）
 
-`AddHook` 注册的是**全局** Hook，对 DB/Tx/Conn 上的所有操作生效。如需**按调用**定制行为（动态 schema、租户路由、临时 SQL 改写），用 `WithCallHooks` 将 Hook 附加到 `context.Context`——无需修改方法签名：
+`AddHook`/`WithHooks` 在 DB 上注册**全局** Hook，对其所有操作生效，包括之后从它创建的 Tx/Conn/Stmt。如需**按调用**定制行为（动态 schema、租户路由、临时 SQL 改写），用 `WithCallHooks` 将 Hook 附加到 `context.Context`——无需修改方法签名：
 
 ```go
 // 自定义：将逻辑表名解析为实际 schema

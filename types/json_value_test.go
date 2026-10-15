@@ -115,6 +115,63 @@ func TestJSONValue_UnmarshalJSON_Null(t *testing.T) {
 	}
 }
 
+// TestJSONValue_ScanNonText covers the default branch: drivers may return
+// non-text values (e.g. int64 for a JSON number column) (#10 F-0118).
+func TestJSONValue_ScanNonText(t *testing.T) {
+	var jv JSONValue[int]
+	if err := jv.Scan(int64(5)); err != nil {
+		t.Fatal(err)
+	}
+	if !jv.Valid || jv.Val != 5 {
+		t.Errorf("unexpected value: %+v", jv)
+	}
+}
+
+// TestJSONValue_ScanReuseNoMerge guards against fields/keys from a previous
+// row leaking into the next when the same JSONValue is reused across rows.
+func TestJSONValue_ScanReuseNoMerge(t *testing.T) {
+	var m JSONValue[map[string]int]
+	if err := m.Scan([]byte(`{"a":1}`)); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Scan([]byte(`{"b":2}`)); err != nil {
+		t.Fatal(err)
+	}
+	if len(m.Val) != 1 || m.Val["b"] != 2 {
+		t.Errorf("map merged across scans: %v", m.Val)
+	}
+
+	var s JSONValue[testAddr]
+	if err := s.Scan([]byte(`{"city":"A","street":"1"}`)); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Scan([]byte(`{"city":"B"}`)); err != nil {
+		t.Fatal(err)
+	}
+	if s.Val != (testAddr{City: "B"}) {
+		t.Errorf("struct merged across scans: %+v", s.Val)
+	}
+}
+
+// TestJSONValue_ScanInvalid ensures a decode error does not leave Valid=true.
+func TestJSONValue_ScanInvalid(t *testing.T) {
+	jv := NewJSONValue(testAddr{City: "stale"})
+	if err := jv.Scan([]byte(`not json`)); err == nil {
+		t.Fatal("expected error for invalid json")
+	}
+	if jv.Valid || jv.Val != (testAddr{}) {
+		t.Errorf("expected zero invalid value after failed scan, got %+v", jv)
+	}
+
+	var u JSONValue[testAddr]
+	if err := u.UnmarshalJSON([]byte(`{"city":1}`)); err == nil {
+		t.Fatal("expected error for mistyped json")
+	}
+	if u.Valid {
+		t.Error("expected Valid=false after failed UnmarshalJSON")
+	}
+}
+
 func TestJSONValue_NestedStruct(t *testing.T) {
 	type Inner struct {
 		Items []testAddr `json:"items"`

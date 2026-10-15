@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"slices"
 )
 
 // GzippedText is a []byte which transparently gzips data being submitted to
@@ -19,10 +20,14 @@ func (g GzippedText) Value() (driver.Value, error) {
 	b := make([]byte, 0, len(g))
 	buf := bytes.NewBuffer(b)
 	w := gzip.NewWriter(buf)
-	w.Write(g)
-	w.Close()
+	if _, err := w.Write(g); err != nil {
+		return nil, err
+	}
+	// A failed Close means the gzip stream is incomplete/corrupt.
+	if err := w.Close(); err != nil {
+		return nil, err
+	}
 	return buf.Bytes(), nil
-
 }
 
 // Scan implements the sql.Scanner interface, ungzipping the value coming off
@@ -60,12 +65,15 @@ func (g *GzippedText) Scan(src any) error {
 // implements `Unmarshal`, which unmarshals the json within to an any
 type JSONText json.RawMessage
 
-var emptyJSON = JSONText("null")
+// nullJSON returns a fresh "null" literal. The bytes must never be shared
+// between values: append((*j)[0:0], ...) would otherwise overwrite the
+// same backing array process-wide (#10 F-0100).
+func nullJSON() JSONText { return JSONText("null") }
 
 // MarshalJSON returns the *j as the JSON encoding of j.
 func (j JSONText) MarshalJSON() ([]byte, error) {
 	if len(j) == 0 {
-		return emptyJSON, nil
+		return nullJSON(), nil
 	}
 	return j, nil
 }
@@ -75,12 +83,14 @@ func (j *JSONText) UnmarshalJSON(data []byte) error {
 	if j == nil {
 		return errors.New("JSONText: UnmarshalJSON on nil pointer")
 	}
-	*j = append((*j)[0:0], data...)
+	*j = slices.Clone(data)
 	return nil
 }
 
 // Value returns j as a value.  This does a validating unmarshal into another
 // RawMessage.  If j is invalid json, it returns an error.
+// j is a copy (value receiver), so the pointer-receiver Unmarshal normalising
+// an empty value to "null" never mutates the caller's JSONText.
 func (j JSONText) Value() (driver.Value, error) {
 	var m json.RawMessage
 	var err = j.Unmarshal(&m)
@@ -98,12 +108,12 @@ func (j *JSONText) Scan(src any) error {
 		source = []byte(t)
 	case []byte:
 		if len(t) == 0 {
-			source = emptyJSON
+			source = nullJSON()
 		} else {
 			source = t
 		}
 	case nil:
-		*j = emptyJSON
+		*j = nullJSON()
 	default:
 		//lint:ignore ST1005 changing this could break consumers of this package
 		return errors.New("Incompatible type for JSONText")
@@ -115,7 +125,7 @@ func (j *JSONText) Scan(src any) error {
 // Unmarshal unmarshal's the json in j to v, as in json.Unmarshal.
 func (j *JSONText) Unmarshal(v any) error {
 	if len(*j) == 0 {
-		*j = emptyJSON
+		*j = nullJSON()
 	}
 	return json.Unmarshal([]byte(*j), v)
 }
@@ -136,7 +146,7 @@ type NullJSONText struct {
 // Scan implements the Scanner interface.
 func (n *NullJSONText) Scan(value any) error {
 	if value == nil {
-		n.JSONText, n.Valid = emptyJSON, false
+		n.JSONText, n.Valid = nullJSON(), false
 		return nil
 	}
 	n.Valid = true
@@ -164,7 +174,7 @@ func (n NullJSONText) MarshalJSON() ([]byte, error) {
 // If data is JSON null or empty, Valid is set to false.
 func (n *NullJSONText) UnmarshalJSON(data []byte) error {
 	if len(data) == 0 || string(data) == "null" {
-		n.JSONText, n.Valid = emptyJSON, false
+		n.JSONText, n.Valid = nullJSON(), false
 		return nil
 	}
 	n.Valid = true
@@ -187,6 +197,8 @@ func (b BitBool) Value() (driver.Value, error) {
 // Scan implements the sql.Scanner interface,
 // and turns the bitfield incoming from MySQL into a BitBool.
 // PostgreSQL returns BIT(1) as the text "1"/"0", which is also accepted.
+// Only BIT(1) is supported: just the first byte is inspected, and any value
+// other than 1 / '1' scans as false.
 func (b *BitBool) Scan(src any) error {
 	v, ok := src.([]byte)
 	if !ok || len(v) == 0 {

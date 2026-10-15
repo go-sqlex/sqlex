@@ -33,8 +33,10 @@ type QueryEvent struct {
 	// OperationType is the operation type.
 	OperationType OpType
 	// RowsAffected is the number of rows affected, only set for exec operations.
+	// It is 0 if the driver does not report it (the sql.Result error is not propagated).
 	RowsAffected int64
 	// LastInsertID is the auto-increment ID of the last inserted row, only set for exec operations.
+	// It is 0 if the driver does not support it (e.g. lib/pq; use RETURNING instead).
 	LastInsertID int64
 }
 
@@ -55,6 +57,12 @@ type QueryEvent struct {
 // only reflects errors from the query dispatch phase and does not include subsequent
 // row.Scan() errors (e.g., type mismatch, sql.ErrNoRows). For full lifecycle
 // observability, use the QueryxContext + rows.Next() + StructScan pattern.
+//
+// Hooks observe only operations that reach the driver. Argument errors raised
+// while preparing the query — IN expansion (e.g. an empty slice for IN (?),
+// AsList on a non-slice, a placeholder/argument count mismatch) and named-parameter
+// binding — are returned to the caller before the Hook chain starts, so neither
+// BeforeQuery nor AfterQuery fires for them. Count such errors at the call site.
 type Hook interface {
 	BeforeQuery(ctx context.Context, event *QueryEvent) context.Context
 	AfterQuery(ctx context.Context, event *QueryEvent)

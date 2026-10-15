@@ -283,7 +283,7 @@ db.Exec(`INSERT INTO t (json_col) VALUES (?)`, data) // []byte is a standard dri
 
 1. `sqlex.AsValue(v)` / `sqlex.AsList(s)` — explicit declaration, highest priority
 2. `driver.Valuer` interface (including `pq.Array`) — treated as single value
-3. `[]byte` — standard driver type, treated as single value
+3. Byte slices (`[]byte`, `json.RawMessage`, named types like `type Hash []byte`) — standard driver type, treated as single value
 4. `IN (?)` context match + slice — auto-expand
 5. Other positions + slice — no expansion, passed as single value (driver will likely error)
 
@@ -495,9 +495,13 @@ func OnError(h sqlex.Hook) sqlex.Hook { /* BeforeQuery passthrough, AfterQuery c
 db.AddHook(SlowOnly(&AlertHook{}, 500*time.Millisecond))
 ```
 
+> **Registration**: `AddHook` is a setup-time API and is not concurrency-safe — call it before the DB is used by multiple goroutines. `Tx`/`Conn`/`Stmt` copy the Hook chain when created, so Hooks added later do not apply to them. Prefer `sqlex.WithHooks(...)` at `Open`/`Connect`, and `WithCallHooks` (below) for per-request Hooks.
+>
+> **Scope**: Hooks observe only operations that reach the driver. Argument errors raised before that — IN expansion (empty slice in `IN (?)`, `AsList` on a non-slice, placeholder/argument count mismatch) and named-parameter binding — are returned to the caller without firing any Hook. Count them at the call site if needed.
+
 #### Per-Call Hooks (WithCallHooks)
 
-`AddHook` registers **global** Hooks that apply to all operations on a DB/Tx/Conn. For **per-call** behaviour injection (dynamic schema, tenant routing, ad-hoc SQL rewriting), use `WithCallHooks` to attach Hooks to a `context.Context` — no method signature changes needed:
+`AddHook`/`WithHooks` register **global** Hooks on a DB; they apply to all its operations, including the Tx/Conn/Stmt created from it afterwards. For **per-call** behaviour injection (dynamic schema, tenant routing, ad-hoc SQL rewriting), use `WithCallHooks` to attach Hooks to a `context.Context` — no method signature changes needed:
 
 ```go
 // Custom: resolve logical table name to actual schema

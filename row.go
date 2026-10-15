@@ -68,6 +68,9 @@ func (r *Row) Columns() ([]string, error) {
 	if r.err != nil {
 		return []string{}, r.err
 	}
+	if r.rows == nil {
+		return []string{}, sql.ErrNoRows
+	}
 	return r.rows.Columns()
 }
 
@@ -75,6 +78,9 @@ func (r *Row) Columns() ([]string, error) {
 func (r *Row) ColumnTypes() ([]*sql.ColumnType, error) {
 	if r.err != nil {
 		return []*sql.ColumnType{}, r.err
+	}
+	if r.rows == nil {
+		return []*sql.ColumnType{}, sql.ErrNoRows
 	}
 	return r.rows.ColumnTypes()
 }

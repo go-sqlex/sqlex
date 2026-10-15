@@ -158,11 +158,11 @@ CREATE TABLE employees (
 
 `,
 	drop: `
-drop table person;
-drop table place;
-drop table capplace;
-drop table nullperson;
-drop table employees;
+drop table if exists person;
+drop table if exists place;
+drop table if exists capplace;
+drop table if exists nullperson;
+drop table if exists employees;
 `,
 }
 
@@ -567,10 +567,10 @@ func TestNamedQuery(t *testing.T) {
 				"EMAIL" text NULL
 			);`,
 		drop: `
-			drop table person;
-			drop table jsperson;
-			drop table place;
-			drop table placeperson;
+			drop table if exists person;
+			drop table if exists jsperson;
+			drop table if exists place;
+			drop table if exists placeperson;
 			`,
 	}
 
@@ -781,7 +781,7 @@ func TestNilInserts(t *testing.T) {
 				id integer,
 				value text NULL DEFAULT NULL
 			);`,
-		drop: "drop table tt;",
+		drop: "drop table if exists tt;",
 	}
 
 	RunWithSchema(schema, t, func(db *DB, t *testing.T, now string) {
@@ -825,7 +825,7 @@ func TestScanError(t *testing.T) {
 				k text,
 				v integer
 			);`,
-		drop: `drop table kv;`,
+		drop: `drop table if exists kv;`,
 	}
 
 	RunWithSchema(schema, t, func(db *DB, t *testing.T, now string) {
@@ -1383,7 +1383,7 @@ func TestEmbeddedMaps(t *testing.T) {
 				string text,
 				properties text
 			);`,
-		drop: `drop table message;`,
+		drop: `drop table if exists message;`,
 	}
 
 	RunWithSchema(schema, t, func(db *DB, t *testing.T, now string) {
@@ -1650,7 +1650,7 @@ func TestEmbeddedLiterals(t *testing.T) {
 			CREATE TABLE x (
 				k text
 			);`,
-		drop: `drop table x;`,
+		drop: `drop table if exists x;`,
 	}
 
 	RunWithSchema(schema, t, func(db *DB, t *testing.T, now string) {
@@ -1791,18 +1791,6 @@ func BenchmarkRebind(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		Rebind(DOLLAR, q1)
 		Rebind(DOLLAR, q2)
-	}
-}
-
-func BenchmarkRebindBuffer(b *testing.B) {
-	b.StopTimer()
-	q1 := `INSERT INTO foo (a, b, c, d, e, f, g, h, i) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-	q2 := `INSERT INTO foo (a, b, c) VALUES (?, ?, "foo"), ("Hi", ?, ?)`
-	b.StartTimer()
-
-	for i := 0; i < b.N; i++ {
-		rebindBuff(DOLLAR, q1)
-		rebindBuff(DOLLAR, q2)
 	}
 }
 

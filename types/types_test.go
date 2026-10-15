@@ -31,7 +31,9 @@ func TestJSONText(t *testing.T) {
 		t.Errorf("Was not expecting an error")
 	}
 	m := map[string]any{}
-	j.Unmarshal(&m)
+	if err = j.Unmarshal(&m); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
 
 	if m["foo"].(float64) != 1 || m["bar"].(float64) != 2 {
 		t.Errorf("Expected valid json but got some garbage instead? %#v", m)
@@ -84,7 +86,9 @@ func TestNullJSONText(t *testing.T) {
 		t.Errorf("Was not expecting an error")
 	}
 	m := map[string]any{}
-	j.Unmarshal(&m)
+	if err = j.Unmarshal(&m); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
 
 	if m["foo"].(float64) != 1 || m["bar"].(float64) != 2 {
 		t.Errorf("Expected valid json but got some garbage instead? %#v", m)
@@ -102,7 +106,9 @@ func TestNullJSONText(t *testing.T) {
 
 func TestNullJSONText_MarshalJSON_Valid(t *testing.T) {
 	j := NullJSONText{}
-	_ = j.Scan(`{"name":"test","value":42}`)
+	if err := j.Scan(`{"name":"test","value":42}`); err != nil {
+		t.Fatalf("Scan: %v", err)
+	}
 
 	data, err := json.Marshal(j)
 	if err != nil {
@@ -121,7 +127,9 @@ func TestNullJSONText_MarshalJSON_Valid(t *testing.T) {
 
 func TestNullJSONText_MarshalJSON_Null(t *testing.T) {
 	j := NullJSONText{}
-	_ = j.Scan(nil) // Valid = false
+	if err := j.Scan(nil); err != nil { // Valid = false
+		t.Fatalf("Scan(nil): %v", err)
+	}
 
 	data, err := json.Marshal(j)
 	if err != nil {
@@ -143,7 +151,9 @@ func TestNullJSONText_UnmarshalJSON_Valid(t *testing.T) {
 	}
 
 	m := map[string]any{}
-	j.Unmarshal(&m)
+	if err = j.Unmarshal(&m); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
 	if m["key"] != "val" {
 		t.Errorf("Expected key=val, got: %v", m["key"])
 	}
@@ -169,10 +179,12 @@ func TestNullJSONText_JSON_RoundTrip(t *testing.T) {
 		Data NullJSONText `json:"data"`
 	}
 
-	// Valid 场景的 round-trip
+	// Round-trip of a valid value
 	w := Wrapper{Name: "test"}
 	w.Data = NullJSONText{}
-	_ = w.Data.Scan(`{"x":1}`)
+	if err := w.Data.Scan(`{"x":1}`); err != nil {
+		t.Fatalf("Scan: %v", err)
+	}
 
 	data, err := json.Marshal(w)
 	if err != nil {
@@ -187,14 +199,18 @@ func TestNullJSONText_JSON_RoundTrip(t *testing.T) {
 		t.Error("Expected Data.Valid=true after round-trip")
 	}
 	m := map[string]any{}
-	w2.Data.Unmarshal(&m)
+	if err = w2.Data.Unmarshal(&m); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
 	if m["x"].(float64) != 1 {
 		t.Errorf("Expected x=1, got: %v", m["x"])
 	}
 
-	// Null 场景的 round-trip
+	// Round-trip of a NULL value
 	w = Wrapper{Name: "empty"}
-	_ = w.Data.Scan(nil)
+	if err = w.Data.Scan(nil); err != nil {
+		t.Fatalf("Scan(nil): %v", err)
+	}
 
 	data, err = json.Marshal(w)
 	if err != nil {
@@ -264,6 +280,34 @@ func TestBitBool_Scan_PostgresText(t *testing.T) {
 		} else if b != want {
 			t.Errorf("Scan(%q) = %v, want %v", src, b, want)
 		}
+	}
+}
+
+// TestJSONText_NoSentinelAliasing verifies that values derived from the "null"
+// literal never share a backing array: overwriting one JSONText must not
+// corrupt the "null" later values marshal to (#10 F-0100).
+func TestJSONText_NoSentinelAliasing(t *testing.T) {
+	var a JSONText
+	if err := a.Scan(nil); err != nil {
+		t.Fatalf("Scan(nil): %v", err)
+	}
+	// Same-length overwrite reuses a's backing array when there is spare
+	// capacity; with a shared sentinel this would corrupt it process-wide.
+	if err := a.UnmarshalJSON([]byte("nulz")); err != nil {
+		t.Fatalf("UnmarshalJSON: %v", err)
+	}
+	if string(a) != "nulz" {
+		t.Fatalf("a: got %q, want %q", a, "nulz")
+	}
+
+	// A fresh empty value must still marshal to a clean "null".
+	var b JSONText
+	out, err := b.MarshalJSON()
+	if err != nil {
+		t.Fatalf("MarshalJSON: %v", err)
+	}
+	if string(out) != "null" {
+		t.Errorf("empty JSONText corrupted: got %q, want %q", out, "null")
 	}
 }
 
