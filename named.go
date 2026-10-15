@@ -301,9 +301,10 @@ func nameExistsInMap(arg map[string]any) func(string) bool {
 }
 
 func nameExistsInStruct(arg any, m *reflectx.Mapper) func(string) bool {
-	var v reflect.Value
-	for v = reflect.ValueOf(arg); v.Kind() == reflect.Ptr; {
-		v = v.Elem()
+	v, err := derefArg(arg)
+	if err != nil {
+		// nil arg: report no names; bindAnyArgs returns the actual error.
+		return func(string) bool { return false }
 	}
 	tm := m.TypeMap(v.Type())
 	return func(name string) bool { _, ok := tm.Names[name]; return ok }

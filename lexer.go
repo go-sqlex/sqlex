@@ -123,10 +123,14 @@ func scanQuoted(query string, start int, quote byte) int {
 // On success, returns (position after closing tag, true); if not valid dollar quoting, returns (start, false).
 //
 // Tag rules: between the two $ characters, only letters, digits, and underscores are allowed
-// (the tag can be empty, i.e. $$).
+// (the tag can be empty, i.e. $$). As in PostgreSQL, the tag must not start with a digit,
+// so positional parameters like $1$ are never mistaken for a dollar-quote opener (#10 F-0015).
 func scanDollarQuote(query string, start int) (end int, ok bool) {
 	// Parse open tag: $<tag>$
 	tagEnd := start + 1
+	if tagEnd < len(query) && query[tagEnd] >= '0' && query[tagEnd] <= '9' {
+		return start, false
+	}
 	for tagEnd < len(query) {
 		c := query[tagEnd]
 		if c == '$' {

@@ -2,7 +2,9 @@
 package testutil
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -15,14 +17,17 @@ import (
 
 var envOnce sync.Once
 
+// rootDir returns PROJECT_ROOT, or the parent of this file's directory.
+// It returns "" if neither is available, so .env.test is resolved relative to the working directory.
 func rootDir() string {
-	rootDir := os.Getenv("PROJECT_ROOT")
-	if rootDir == "" {
-		// If PROJECT_ROOT env var is not set, try to auto-detect
-		_, filename, _, _ := runtime.Caller(0)
-		rootDir = filepath.Dir(filepath.Dir(filename)) // Assume project root is the parent of the current directory
+	if dir := os.Getenv("PROJECT_ROOT"); dir != "" {
+		return dir
 	}
-	return rootDir
+	_, filename, _, ok := runtime.Caller(0)
+	if !ok {
+		return ""
+	}
+	return filepath.Dir(filepath.Dir(filename)) // Project root is the parent of testutil/
 }
 
 // LoadTestEnv loads environment variables from .env.test in the project root (loaded only once).
@@ -35,11 +40,16 @@ func rootDir() string {
 //   - SQLX_ORACLE_DSN    — Oracle full DSN, e.g. "oracle://user:password@host:1521/service_name"
 //
 // Set to "skip" to skip tests for that database.
+//
+// A missing .env.test is allowed. Any other load error (e.g. a malformed file) panics:
+// it is called from init() where no *testing.T exists, and ignoring it would silently
+// skip every database-backed test while the run still passes.
 func LoadTestEnv() {
 	envOnce.Do(func() {
 		envPath := filepath.Join(rootDir(), ".env.test")
-		// Ignore file-not-found errors; allow running without .env.test
-		_ = godotenv.Load(envPath)
+		if err := godotenv.Load(envPath); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			panic(fmt.Sprintf("testutil: failed to load %s: %v", envPath, err))
+		}
 	})
 }
 

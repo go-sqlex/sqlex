@@ -6,8 +6,13 @@ import (
 	"testing"
 )
 
-func ival(v reflect.Value) int {
-	return v.Interface().(int)
+func ival(t *testing.T, v reflect.Value) int {
+	t.Helper()
+	i, ok := v.Interface().(int)
+	if !ok {
+		t.Fatalf("expected int field, got %T", v.Interface())
+	}
+	return i
 }
 
 func TestBasicEmbedded(t *testing.T) {
@@ -49,8 +54,8 @@ func TestBasicEmbedded(t *testing.T) {
 			t.Errorf("path %q should exist", c.path)
 			continue
 		}
-		if ival(FieldByIndexesReadOnly(zv, fi.Index)) != c.val {
-			t.Errorf("path %q: expected %d, got %d", c.path, c.val, ival(FieldByIndexesReadOnly(zv, fi.Index)))
+		if ival(t, FieldByIndexesReadOnly(zv, fi.Index)) != c.val {
+			t.Errorf("path %q: expected %d, got %d", c.path, c.val, ival(t, FieldByIndexesReadOnly(zv, fi.Index)))
 		}
 	}
 
@@ -96,8 +101,8 @@ func TestBasicEmbeddedWithTags(t *testing.T) {
 			t.Errorf("path %q should exist", c.path)
 			continue
 		}
-		if ival(FieldByIndexesReadOnly(zv, fi.Index)) != c.val {
-			t.Errorf("path %q: expected %d, got %d", c.path, c.val, ival(FieldByIndexesReadOnly(zv, fi.Index)))
+		if ival(t, FieldByIndexesReadOnly(zv, fi.Index)) != c.val {
+			t.Errorf("path %q: expected %d, got %d", c.path, c.val, ival(t, FieldByIndexesReadOnly(zv, fi.Index)))
 		}
 	}
 }
@@ -136,8 +141,8 @@ func TestBasicEmbeddedWithSameName(t *testing.T) {
 			t.Errorf("path %q should exist", c.path)
 			continue
 		}
-		if ival(FieldByIndexesReadOnly(zv, fi.Index)) != c.val {
-			t.Errorf("path %q: expected %d, got %d", c.path, c.val, ival(FieldByIndexesReadOnly(zv, fi.Index)))
+		if ival(t, FieldByIndexesReadOnly(zv, fi.Index)) != c.val {
+			t.Errorf("path %q: expected %d, got %d", c.path, c.val, ival(t, FieldByIndexesReadOnly(zv, fi.Index)))
 		}
 	}
 }
@@ -402,6 +407,26 @@ func TestFieldsEmbedded(t *testing.T) {
 	}
 }
 
+// TestParseOptions guards F-0204 (issue #10): option values must be split on
+// the first "=" only, and the name part must not produce an entry.
+func TestParseOptions(t *testing.T) {
+	cases := []struct {
+		tag  string
+		want map[string]string
+	}{
+		{"", map[string]string{}},
+		{"name", map[string]string{}},
+		{"name,required", map[string]string{"required": ""}},
+		{"name,size=64,required", map[string]string{"size": "64", "required": ""}},
+		{"name,default=a=b", map[string]string{"default": "a=b"}},
+	}
+	for _, c := range cases {
+		if got := parseOptions(c.tag); !reflect.DeepEqual(got, c.want) {
+			t.Errorf("parseOptions(%q) = %v, want %v", c.tag, got, c.want)
+		}
+	}
+}
+
 func TestPtrFields(t *testing.T) {
 	m := NewMapperTagFunc("db", strings.ToLower, nil)
 	type Asset struct {
@@ -511,7 +536,7 @@ func TestTagNameMapping(t *testing.T) {
 		}
 		return value
 	})
-	strategy := Strategy{"1", "Alpah"}
+	strategy := Strategy{"1", "Alpha"}
 	mapping := m.TypeMap(reflect.TypeOf(strategy))
 
 	for _, key := range []string{"strategy_id", "STRATEGYNAME"} {
@@ -852,8 +877,7 @@ func TestMustBe(t *testing.T) {
 		if r := recover(); r != nil {
 			valueErr, ok := r.(*reflect.ValueError)
 			if !ok {
-				t.Errorf("unexpected Method: %s", valueErr.Method)
-				t.Fatal("expected panic with *reflect.ValueError")
+				t.Fatalf("expected panic with *reflect.ValueError, got %T: %v", r, r)
 			}
 			if valueErr.Method != "github.com/go-sqlex/sqlex/reflectx.TestMustBe" {
 				t.Fatalf("unexpected Method: %s", valueErr.Method)

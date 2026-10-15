@@ -138,4 +138,3 @@ func TestFindValuesKeyword_Boundary(t *testing.T) {
 		t.Errorf("should not find VALUES in SELECT, got pos=%d", pos)
 	}
 }
-

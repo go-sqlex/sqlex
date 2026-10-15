@@ -141,7 +141,9 @@ func asSliceForIn(i any) (v reflect.Value, ok bool) {
 		return reflect.Value{}, false
 	}
 
-	if t == reflect.TypeOf([]byte{}) {
+	// Any byte slice ([]byte, json.RawMessage, named `type Hash []byte`) is a
+	// single driver value, mirroring database/sql's DefaultParameterConverter (#10 F-0012).
+	if t.Elem().Kind() == reflect.Uint8 {
 		return reflect.Value{}, false
 	}
 

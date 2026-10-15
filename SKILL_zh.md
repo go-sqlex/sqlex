@@ -199,6 +199,8 @@ db.SelectContext(ctx, &users, "SELECT * FROM {{schema}}.users WHERE age > ?", 18
 6. **Stmt/NamedStmt 不支持 IN 展开** — 占位符在 Prepare 时已固定，IN 查询请用 `db.Select`/`db.NamedSelect`
 7. **Stmt/NamedStmt 必须 Close** — 持有 `sql.Stmt`，忘记 `Close()` 会导致资源泄漏直到 `DB.Close()`
 8. **StrictMode 默认宽松** — 与 sqlx `db.Unsafe()` 行为一致
+9. **`AddHook` 仅在启动期调用** — 非并发安全，且已创建的 Tx/Conn/Stmt 看不到之后追加的 Hook；初始化用 `WithHooks`，按请求用 `WithCallHooks`
+10. **Hook 观测不到参数错误** — IN 展开 / 命名参数绑定的错误在 Hook 链之前直接返回，需在调用方统计
 
 ## 5. 与 jmoiron/sqlx 的差异
 

@@ -89,6 +89,8 @@ func (j *JSONText) UnmarshalJSON(data []byte) error {
 
 // Value returns j as a value.  This does a validating unmarshal into another
 // RawMessage.  If j is invalid json, it returns an error.
+// j is a copy (value receiver), so the pointer-receiver Unmarshal normalising
+// an empty value to "null" never mutates the caller's JSONText.
 func (j JSONText) Value() (driver.Value, error) {
 	var m json.RawMessage
 	var err = j.Unmarshal(&m)
@@ -195,6 +197,8 @@ func (b BitBool) Value() (driver.Value, error) {
 // Scan implements the sql.Scanner interface,
 // and turns the bitfield incoming from MySQL into a BitBool.
 // PostgreSQL returns BIT(1) as the text "1"/"0", which is also accepted.
+// Only BIT(1) is supported: just the first byte is inspected, and any value
+// other than 1 / '1' scans as false.
 func (b *BitBool) Scan(src any) error {
 	v, ok := src.([]byte)
 	if !ok || len(v) == 0 {

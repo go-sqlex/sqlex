@@ -46,6 +46,8 @@ func TestScanSkipSegment(t *testing.T) {
 		{"dollar with colon", "$$a:b$$", 0, 7, segDollarQuote, true},
 		{"dollar unclosed", "$$abc", 0, 5, segDollarQuote, true},
 		{"dollar invalid tag fallback", "$1abc", 0, 0, segNormal, false},
+		{"dollar digit-leading tag not quote", "$1$abc$1$", 0, 0, segNormal, false},
+		{"dollar tag with inner digit", "$a1$x$a1$", 0, 9, segDollarQuote, true},
 
 		// ===== Line comment =====
 		{"line comment with newline", "-- c\nx", 0, 5, segLineComment, true},

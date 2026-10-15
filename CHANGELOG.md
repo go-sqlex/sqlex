@@ -1,6 +1,6 @@
 ## v1.5.5
 
-> Focus: fixes from the code review in [#7](https://github.com/go-sqlex/sqlex/issues/7).
+> Focus: fixes from the code review in [#7](https://github.com/go-sqlex/sqlex/issues/7) and the audit in [#10](https://github.com/go-sqlex/sqlex/issues/10).
 
 ### ✨ Features
 
@@ -24,10 +24,21 @@
 
 - **`types.JSONText` shared sentinel corrupted** (F-0100): `UnmarshalJSON` reused the backing array of a package-level `"null"` value, so one unmarshal could change how every empty `JSONText` in the process marshals. The input is now copied and the sentinel is no longer shared.
 - **`sql.RawBytes` guard bypassed via containers** (F-0002): fields such as `[]sql.RawBytes` or `*sql.RawBytes` are now rejected like a bare `sql.RawBytes`, instead of keeping references into the driver buffer that get overwritten on the next row.
+- **`Select` crashed on self-referential destination types**: the `sql.RawBytes` guard recursed without cycle detection, so a destination such as `struct{ Next *Node }` overflowed the stack and killed the process (since v1.5.3). Cycles are now detected, types implementing `sql.Scanner` (e.g. `types.JSONValue[T]`) are not descended into, and the result is cached per type.
 - **`types.GzippedText.Value` ignored compression errors** (F-0101): write/close errors are now returned instead of storing a truncated gzip payload.
-- **Field mapping dropped on `db:` substring** (F-0203): a tag like `json:"db:x"` or `mydb:"x"` was mistaken for a `db` tag, yielding an empty column name and silently skipping the field. Tags are now detected with `StructTag.Lookup`.
+- **`types.JSONValue.Scan` merged rows when reused**: `Val` was decoded in place, so scanning several rows into the same `JSONValue` (e.g. `rows.Scan(&v)` in a loop) carried map keys and struct fields over from previous rows. `Val` is now reset before each scan.
+- **`types.JSONValue` reported `Valid=true` on decode errors**: `Scan` and `UnmarshalJSON` now set `Valid` only when decoding succeeds; a failed `Scan` also leaves `Val` at its zero value.
+- **Tag option values truncated at a second `=`** (F-0204): `db:"x,default=a=b"` produced option `default` = `a`; values are now split on the first `=` only.
+- **Field mapping dropped on `db:` substring** (F-0203): a tag like `json:"db:x"` or `mydb:"x"` was mistaken for a `db` tag, yielding an empty column name and silently skipping the field. Tags are now detected with `StructTag.Lookup`. Malformed tags (e.g. `db: "x"` with a space, or an unquoted `db:x`) were dropped the same way; like `encoding/json`, they are now ignored and the field maps by its name.
 - **`Rows.StructScan` panics on a nil pointer** (F-0001): now returns an error.
 - **`Row.Columns`/`ColumnTypes` panic on a zero `Row`** (F-0008): now return `sql.ErrNoRows`.
+- **Named byte-slice types expanded as IN lists** (F-0012): `IN (?)` with a `json.RawMessage` or a `type Hash []byte` was expanded byte by byte. Any slice whose element kind is `uint8` is now bound as a single value, matching `database/sql`.
+- **`Rows.StructScan` reused traversals across struct types** (F-0018): scanning rows of one `Rows` into a different struct type wrote through field indexes computed for the previous type. The cache is now rebuilt when the destination type changes.
+- **`$1$` treated as a dollar-quote opener** (F-0015): as in PostgreSQL, a dollar-quote tag can no longer start with a digit, so placeholders after `$1$` are no longer swallowed by `In`/`Rebind`/named binding.
+
+### ⚡ Performance
+
+- **Lock-free default mapper** (F-0005): the package-level `mapper()` used by `Select`/`Get` took a global mutex on every call; it is now a single atomic load, locking only to rebuild after `NameMapper` changes (8-goroutine benchmark: ~120 ns → <1 ns).
 
 ## v1.5.4
 

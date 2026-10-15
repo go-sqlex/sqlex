@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"sync"
 
 	"github.com/go-sqlex/sqlex/reflectx"
 )
@@ -250,13 +251,39 @@ func baseType(t reflect.Type, expected reflect.Kind) (reflect.Type, error) {
 
 var rawBytesType = reflect.TypeOf(sql.RawBytes{})
 
+// rawBytesCache memoises containsRawBytes per destination type (reflect.Type -> bool).
+var rawBytesCache sync.Map
+
 // containsRawBytes checks if type t is sql.RawBytes or contains it as a struct
-// field or slice/pointer element.
+// field or slice/array/pointer element.
 func containsRawBytes(t reflect.Type) bool {
+	if v, ok := rawBytesCache.Load(t); ok {
+		return v.(bool)
+	}
+	found := walkRawBytes(t, make(map[reflect.Type]struct{}))
+	rawBytesCache.Store(t, found)
+	return found
+}
+
+// walkRawBytes does the traversal for containsRawBytes. seen breaks cycles in
+// self-referential types (tree nodes, linked lists), which would otherwise
+// recurse until the stack overflows and kill the process.
+func walkRawBytes(t reflect.Type, seen map[reflect.Type]struct{}) bool {
 	t = reflectx.Deref(t)
 	if t == rawBytesType {
 		return true
 	}
+	if _, ok := seen[t]; ok {
+		return false
+	}
+	seen[t] = struct{}{}
+
+	// A sql.Scanner decodes src itself (e.g. types.JSONValue[T]); its fields are
+	// never bound to the driver buffer, so do not descend into them.
+	if reflect.PointerTo(t).Implements(_scannerInterface) {
+		return false
+	}
+
 	switch t.Kind() {
 	case reflect.Struct:
 		for i := 0; i < t.NumField(); i++ {
@@ -264,12 +291,13 @@ func containsRawBytes(t reflect.Type) bool {
 			if !f.IsExported() && !f.Anonymous {
 				continue
 			}
-			if containsRawBytes(f.Type) {
+			if walkRawBytes(f.Type, seen) {
 				return true
 			}
 		}
 	case reflect.Slice, reflect.Array, reflect.Ptr:
-		return containsRawBytes(t.Elem())
+		return walkRawBytes(t.Elem(), seen)
+	default:
 	}
 	return false
 }

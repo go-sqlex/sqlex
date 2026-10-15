@@ -20,7 +20,7 @@ func TestScanAll_RawBytes_Corruption(t *testing.T) {
 
 	pgdb.MustExec(`DROP TABLE IF EXISTS rawbytes_test`)
 	pgdb.MustExec(`CREATE TABLE rawbytes_test (data bytea)`)
-	defer pgdb.MustExec(`DROP TABLE rawbytes_test`)
+	defer pgdb.MustExec(`DROP TABLE IF EXISTS rawbytes_test`)
 
 	pgdb.MustExec(`INSERT INTO rawbytes_test VALUES ('\xdead'), ('\xbeef'), ('\xdeadbeef')`)
 
@@ -115,6 +115,15 @@ func TestScanAll_RawBytes_Corruption(t *testing.T) {
 	})
 }
 
+// rawScanner decodes src itself, so its RawBytes field never aliases the driver buffer.
+type rawScanner struct{ Data sql.RawBytes }
+
+func (r *rawScanner) Scan(src any) error {
+	b, _ := src.([]byte)
+	r.Data = append(sql.RawBytes(nil), b...)
+	return nil
+}
+
 // TestContainsRawBytes is a database-free unit test covering all branches of
 // containsRawBytes, in particular the skip of unexported non-embedded fields
 // (the continue path) which the PG-dependent integration test above cannot
@@ -147,6 +156,24 @@ func TestContainsRawBytes(t *testing.T) {
 		//lint:ignore U1000 intentionally unused: exists for reflect inspection by containsRawBytes
 		data sql.RawBytes // unexported, must be skipped even though it's the only field
 	}
+	// Self-referential types must terminate instead of overflowing the stack.
+	type listNode struct {
+		ID   int
+		Next *listNode
+	}
+	type treeNode struct {
+		ID       int
+		Children []treeNode
+	}
+	type mutualA struct{ B []struct{ A *mutualA } }
+	type rawListNode struct {
+		Next *rawListNode
+		Data sql.RawBytes // after the cycle: must still be found
+	}
+	type rawTreeNode struct {
+		Children []rawTreeNode
+		Data     sql.RawBytes
+	}
 
 	tests := []struct {
 		name string
@@ -165,6 +192,13 @@ func TestContainsRawBytes(t *testing.T) {
 		{"clean struct no raw bytes", cleanStruct{}, false},
 		{"unexported raw field skipped", unexportedRaw{}, false},
 		{"only unexported raw field skipped", embeddedUnexportedRaw{}, false},
+		{"recursive pointer type", listNode{}, false},
+		{"recursive slice type", treeNode{}, false},
+		{"mutually recursive types", mutualA{}, false},
+		{"recursive pointer type with raw field", rawListNode{}, true},
+		{"recursive slice type with raw field", rawTreeNode{}, true},
+		{"scanner is not descended into", rawScanner{}, false},
+		{"struct holding a scanner", struct{ S rawScanner }{}, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

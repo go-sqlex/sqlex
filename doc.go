@@ -12,7 +12,7 @@
 //   - Transparent IN: Select/Get/NamedGet/NamedSelect auto-expand slice parameters
 //   - StrictMode: optional strict mode detecting query result / struct field mismatches
 //   - CloseWithErr: auto-commits or rolls back transactions based on error; result returned and reported via Hook
-//   - NamedExt/BindExt: unified interfaces, DB and Tx are interchangeable
+//   - NamedExt/BindExt: unified interfaces, DB, Tx and Conn are interchangeable
 //   - Functional Options: Open/Connect support WithHooks/WithStrictMode etc.
 //
 // # Quick Start

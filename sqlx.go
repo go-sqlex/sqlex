@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/go-sqlex/sqlex/reflectx"
 )
@@ -24,28 +25,38 @@ import (
 // only in an init() function; modifying it at runtime may cause data races. If you need different
 // mapping strategies at runtime, use DB.MapperFunc() to set each DB instance individually.
 var NameMapper = strings.ToLower
-var origMapper = reflect.ValueOf(NameMapper)
 
-// Rather than creating on init, this is created when necessary so that
+// mapperState pairs the default Mapper with the NameMapper func it was built from.
+type mapperState struct {
+	m  *reflectx.Mapper
+	fn reflect.Value // NameMapper used to build m; Value equality distinguishes closures
+}
+
+// Rather than creating on init, the default Mapper is created when necessary so that
 // importers have time to customize the NameMapper.
-var mpr *reflectx.Mapper
-
-// mprMu protects mpr.
-var mprMu sync.Mutex
+var (
+	mpr   atomic.Pointer[mapperState]
+	mprMu sync.Mutex // serialises rebuilds only; the fast path is lock-free
+)
 
 // mapper returns a valid mapper using the configured NameMapper func.
+// The hot path is a single atomic load; the mutex is taken only when the
+// Mapper has not been built yet or NameMapper has been replaced (#10 F-0005).
 func mapper() *reflectx.Mapper {
+	if s := mpr.Load(); s != nil && s.fn == reflect.ValueOf(NameMapper) {
+		return s.m
+	}
+
 	mprMu.Lock()
 	defer mprMu.Unlock()
-
-	if mpr == nil {
-		mpr = reflectx.NewMapperFunc("db", NameMapper)
-	} else if origMapper != reflect.ValueOf(NameMapper) {
-		// if NameMapper has changed, create a new mapper
-		mpr = reflectx.NewMapperFunc("db", NameMapper)
-		origMapper = reflect.ValueOf(NameMapper)
+	nm := NameMapper
+	fn := reflect.ValueOf(nm)
+	if s := mpr.Load(); s != nil && s.fn == fn {
+		return s.m
 	}
-	return mpr
+	s := &mapperState{m: reflectx.NewMapperFunc("db", nm), fn: fn}
+	mpr.Store(s)
+	return s.m
 }
 
 // isScannable takes the reflect.Type and the actual dest value and returns

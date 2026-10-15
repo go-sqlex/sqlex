@@ -202,6 +202,8 @@ db.SelectContext(ctx, &users, "SELECT * FROM {{schema}}.users WHERE age > ?", 18
 6. **Stmt/NamedStmt do not support IN expansion** — placeholders fixed at Prepare time; use `db.Select`/`db.NamedSelect` for IN queries
 7. **Stmt/NamedStmt must be Closed** — hold `sql.Stmt`, forgetting `Close()` causes resource leaks until `DB.Close()`
 8. **StrictMode defaults to lenient** — Consistent with sqlx `db.Unsafe()` behavior
+9. **`AddHook` only at startup** — Not concurrency-safe, and existing Tx/Conn/Stmt don't see later Hooks; use `WithHooks` at Open/Connect, `WithCallHooks` per request
+10. **Hooks don't see argument errors** — IN expansion / named binding errors are returned before the Hook chain runs; count them at the call site
 
 ## 5. Differences from jmoiron/sqlx
 

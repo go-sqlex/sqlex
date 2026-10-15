@@ -98,6 +98,11 @@ func (db *DB) Rebind(query string) string {
 }
 
 // AddHook registers a Hook instance that applies to all queries on this DB.
+//
+// AddHook is a setup-time API and is not safe for concurrent use: call it before
+// the DB is shared across goroutines. Tx, Conn and Stmt values copy the Hook chain
+// when created, so Hooks added later do not apply to them. Prefer WithHooks at
+// Open/Connect, and WithCallHooks for per-request Hooks (safe for concurrent use).
 func (db *DB) AddHook(hook Hook) {
 	db.hooks = append(db.hooks, hook)
 }

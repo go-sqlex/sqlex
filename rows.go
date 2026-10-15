@@ -15,9 +15,10 @@ type Rows struct {
 	Mapper *reflectx.Mapper
 	strict bool
 	// these fields cache memory use for a rows during iteration w/ structScan
-	started bool
-	fields  [][]int
-	values  []any
+	started  bool
+	destType reflect.Type // struct type fields was computed for
+	fields   [][]int
+	values   []any
 }
 
 // GetMapper returns the Mapper for this Rows.
@@ -28,6 +29,7 @@ func (r *Rows) GetMapper() *reflectx.Mapper {
 // NextResultSet invalidates the StructScan cache before switching result sets. See #857.
 func (r *Rows) NextResultSet() bool {
 	r.started = false
+	r.destType = nil
 	r.fields = nil
 	r.values = nil
 	return r.Rows.NextResultSet()
@@ -46,8 +48,9 @@ func (r *Rows) MapScan(dest map[string]any) error {
 // StructScan is like sql.Rows.Scan, but scans a single Row into a single Struct.
 // Use this and iterate over Rows manually when the memory load of Select() might be
 // prohibitive.  *Rows.StructScan caches the reflect work of matching up column
-// positions to fields to avoid that overhead per scan, which means it is not safe
-// to run StructScan on the same Rows instance with different struct types.
+// positions to fields to avoid that overhead per scan. The cache is keyed by the
+// destination type, so switching struct types recomputes it (at the cost of the
+// reflect work); prefer a single type per Rows.
 //
 // Note: Rows, like database/sql.Rows, is not safe for concurrent use.
 // Do not call StructScan on the same Rows instance from multiple goroutines.
@@ -63,7 +66,9 @@ func (r *Rows) StructScan(dest any) error {
 
 	v = v.Elem()
 
-	if !r.started {
+	// A different destination type would reuse traversals computed for another
+	// struct and write to the wrong fields (#10 F-0018).
+	if !r.started || r.destType != v.Type() {
 		columns, err := r.Columns()
 		if err != nil {
 			return err
@@ -78,6 +83,7 @@ func (r *Rows) StructScan(dest any) error {
 			}
 		}
 		r.values = make([]any, len(columns))
+		r.destType = v.Type()
 		r.started = true
 	}
 
