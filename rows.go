@@ -57,6 +57,9 @@ func (r *Rows) StructScan(dest any) error {
 	if v.Kind() != reflect.Ptr {
 		return errors.New("must pass a pointer, not a value, to StructScan destination")
 	}
+	if v.IsNil() {
+		return errors.New("nil pointer passed to StructScan destination")
+	}
 
 	v = v.Elem()
 

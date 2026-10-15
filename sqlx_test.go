@@ -1794,18 +1794,6 @@ func BenchmarkRebind(b *testing.B) {
 	}
 }
 
-func BenchmarkRebindBuffer(b *testing.B) {
-	b.StopTimer()
-	q1 := `INSERT INTO foo (a, b, c, d, e, f, g, h, i) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-	q2 := `INSERT INTO foo (a, b, c) VALUES (?, ?, "foo"), ("Hi", ?, ?)`
-	b.StartTimer()
-
-	for i := 0; i < b.N; i++ {
-		rebindBuff(DOLLAR, q1)
-		rebindBuff(DOLLAR, q2)
-	}
-}
-
 func TestIn130Regression(t *testing.T) {
 	t.Run("[]any{}", func(t *testing.T) {
 		q, args, err := In("SELECT * FROM people WHERE name IN (?)", []any{[]string{"gopher"}}...)

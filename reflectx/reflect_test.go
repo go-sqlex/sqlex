@@ -176,6 +176,45 @@ func TestFlatTags(t *testing.T) {
 	}
 }
 
+// TestParseName_TagSubstringFalsePositive guards F-0203 (issue #10): a "db:"
+// substring inside another key's value (or a suffixed key such as "mydb")
+// must not be treated as a db tag, otherwise the field mapping is dropped.
+func TestParseName_TagSubstringFalsePositive(t *testing.T) {
+	m := NewMapperFunc("db", strings.ToLower)
+
+	type Row struct {
+		InJSONValue string `json:"db:x"`
+		SuffixedKey string `mydb:"y"`
+		Explicit    string `json:"db:z" db:"explicit_col"`
+		EmptyTag    string `db:""`
+	}
+
+	tm := m.TypeMap(reflect.TypeOf(Row{}))
+
+	cases := []struct {
+		path  string
+		field string
+	}{
+		{"injsonvalue", "InJSONValue"},
+		{"suffixedkey", "SuffixedKey"},
+		{"explicit_col", "Explicit"},
+	}
+	for _, c := range cases {
+		fi := tm.GetByPath(c.path)
+		if fi == nil {
+			t.Errorf("path %q should map to field %s", c.path, c.field)
+			continue
+		}
+		if fi.Field.Name != c.field {
+			t.Errorf("path %q: expected field %s, got %s", c.path, c.field, fi.Field.Name)
+		}
+	}
+
+	if fi := tm.GetByPath("emptytag"); fi != nil {
+		t.Errorf("explicit db:\"\" must keep empty-name semantics, got path %q", fi.Path)
+	}
+}
+
 func TestNestedStruct(t *testing.T) {
 	m := NewMapper("db")
 

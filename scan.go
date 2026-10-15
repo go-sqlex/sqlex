@@ -250,13 +250,15 @@ func baseType(t reflect.Type, expected reflect.Kind) (reflect.Type, error) {
 
 var rawBytesType = reflect.TypeOf(sql.RawBytes{})
 
-// containsRawBytes checks if type t is sql.RawBytes or contains it as a struct field.
+// containsRawBytes checks if type t is sql.RawBytes or contains it as a struct
+// field or slice/pointer element.
 func containsRawBytes(t reflect.Type) bool {
 	t = reflectx.Deref(t)
 	if t == rawBytesType {
 		return true
 	}
-	if t.Kind() == reflect.Struct {
+	switch t.Kind() {
+	case reflect.Struct:
 		for i := 0; i < t.NumField(); i++ {
 			f := t.Field(i)
 			if !f.IsExported() && !f.Anonymous {
@@ -266,6 +268,8 @@ func containsRawBytes(t reflect.Type) bool {
 				return true
 			}
 		}
+	case reflect.Slice, reflect.Array, reflect.Ptr:
+		return containsRawBytes(t.Elem())
 	}
 	return false
 }

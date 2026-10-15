@@ -66,6 +66,21 @@ func TestScanAll_RawBytes_Corruption(t *testing.T) {
 		}
 	})
 
+	// struct with []sql.RawBytes field — bypassed the guard before #10 F-0002
+	t.Run("struct_with_slice_of_RawBytes_field_rejected", func(t *testing.T) {
+		type SliceRawRow struct {
+			Data []sql.RawBytes `db:"data"`
+		}
+		var result []SliceRawRow
+		err := pgdb.Select(&result, `SELECT data FROM rawbytes_test WHERE $1=1`, 1)
+		if err == nil {
+			t.Fatal("expected error rejecting []sql.RawBytes in struct field, got nil")
+		}
+		if !strings.Contains(err.Error(), "RawBytes") {
+			t.Errorf("error should mention RawBytes: got %v", err)
+		}
+	})
+
 	// nested struct with RawBytes — should be rejected recursively
 	t.Run("nested_struct_with_RawBytes_rejected", func(t *testing.T) {
 		type Inner struct {
@@ -116,6 +131,9 @@ func TestContainsRawBytes(t *testing.T) {
 	type withPtrRawField struct {
 		Data *sql.RawBytes
 	}
+	type withSliceRawField struct {
+		Data []sql.RawBytes
+	}
 	type nestedRaw struct {
 		Inner struct {
 			Data sql.RawBytes
@@ -142,6 +160,7 @@ func TestContainsRawBytes(t *testing.T) {
 		{"int", 0, false},
 		{"struct with exported raw field", withRawField{}, true},
 		{"struct with ptr raw field", withPtrRawField{}, true},
+		{"struct with slice of raw field (#10 F-0002)", withSliceRawField{}, true},
 		{"nested struct with raw", nestedRaw{}, true},
 		{"clean struct no raw bytes", cleanStruct{}, false},
 		{"unexported raw field skipped", unexportedRaw{}, false},

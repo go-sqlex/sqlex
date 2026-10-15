@@ -267,6 +267,34 @@ func TestBitBool_Scan_PostgresText(t *testing.T) {
 	}
 }
 
+// TestJSONText_NoSentinelAliasing verifies that values derived from the "null"
+// literal never share a backing array: overwriting one JSONText must not
+// corrupt the "null" later values marshal to (#10 F-0100).
+func TestJSONText_NoSentinelAliasing(t *testing.T) {
+	var a JSONText
+	if err := a.Scan(nil); err != nil {
+		t.Fatalf("Scan(nil): %v", err)
+	}
+	// Same-length overwrite reuses a's backing array when there is spare
+	// capacity; with a shared sentinel this would corrupt it process-wide.
+	if err := a.UnmarshalJSON([]byte("nulz")); err != nil {
+		t.Fatalf("UnmarshalJSON: %v", err)
+	}
+	if string(a) != "nulz" {
+		t.Fatalf("a: got %q, want %q", a, "nulz")
+	}
+
+	// A fresh empty value must still marshal to a clean "null".
+	var b JSONText
+	out, err := b.MarshalJSON()
+	if err != nil {
+		t.Fatalf("MarshalJSON: %v", err)
+	}
+	if string(out) != "null" {
+		t.Errorf("empty JSONText corrupted: got %q, want %q", out, "null")
+	}
+}
+
 // TestGzippedText_Scan_Null verifies that scanning SQL NULL resets GzippedText to nil (#7 F-007).
 func TestGzippedText_Scan_Null(t *testing.T) {
 	g := GzippedText("stale")

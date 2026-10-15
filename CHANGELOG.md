@@ -20,6 +20,15 @@
 - **Batch binding picks a nested VALUES**: `fixBound` now prefers a top-level `VALUES`, so a `VALUES` inside a CTE no longer shadows the main INSERT's. `UPDATE ... FROM (VALUES ...)` is still supported.
 - **Flaky Hook duration tests on Windows** ([#8](https://github.com/go-sqlex/sqlex/issues/8)): a zero `QueryEvent.Duration` is accepted on low-resolution timers.
 
+#### From the audit in [#10](https://github.com/go-sqlex/sqlex/issues/10)
+
+- **`types.JSONText` shared sentinel corrupted** (F-0100): `UnmarshalJSON` reused the backing array of a package-level `"null"` value, so one unmarshal could change how every empty `JSONText` in the process marshals. The input is now copied and the sentinel is no longer shared.
+- **`sql.RawBytes` guard bypassed via containers** (F-0002): fields such as `[]sql.RawBytes` or `*sql.RawBytes` are now rejected like a bare `sql.RawBytes`, instead of keeping references into the driver buffer that get overwritten on the next row.
+- **`types.GzippedText.Value` ignored compression errors** (F-0101): write/close errors are now returned instead of storing a truncated gzip payload.
+- **Field mapping dropped on `db:` substring** (F-0203): a tag like `json:"db:x"` or `mydb:"x"` was mistaken for a `db` tag, yielding an empty column name and silently skipping the field. Tags are now detected with `StructTag.Lookup`.
+- **`Rows.StructScan` panics on a nil pointer** (F-0001): now returns an error.
+- **`Row.Columns`/`ColumnTypes` panic on a zero `Row`** (F-0008): now return `sql.ErrNoRows`.
+
 ## v1.5.4
 
 > Focus: per-call Hook injection — attach behaviour to a single call without touching method signatures.

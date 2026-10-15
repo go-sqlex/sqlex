@@ -1,7 +1,6 @@
 package sqlex
 
 import (
-	"bytes"
 	"database/sql/driver"
 	"errors"
 	"reflect"
@@ -120,28 +119,6 @@ func Rebind(bindType int, query string) string {
 	}
 
 	return string(rqb)
-}
-
-// rebindBuff is kept for benchmarking comparison.
-func rebindBuff(bindType int, query string) string {
-	if bindType != DOLLAR {
-		return query
-	}
-
-	b := make([]byte, 0, len(query))
-	rqb := bytes.NewBuffer(b)
-	j := 1
-	for _, r := range query {
-		if r == '?' {
-			rqb.WriteRune('$')
-			rqb.WriteString(strconv.Itoa(j))
-			j++
-		} else {
-			rqb.WriteRune(r)
-		}
-	}
-
-	return rqb.String()
 }
 
 // callValuerValue mirrors database/sql.callValuerValue. See #952.
