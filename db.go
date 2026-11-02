@@ -18,9 +18,18 @@ type DB struct {
 type Opt func(db *DB)
 
 // WithHooks returns an Opt that registers Hook chain(s) when creating a DB.
+// Nil Hooks are ignored.
 func WithHooks(hooks ...Hook) Opt {
 	return func(db *DB) {
-		db.hooks = append(db.hooks, hooks...)
+		db.hooks = append(db.hooks, filterHooks(hooks)...)
+	}
+}
+
+// WithStrictMode returns an Opt that enables strict mode when creating a DB,
+// equivalent to calling SetStrict(true) afterwards.
+func WithStrictMode() Opt {
+	return func(db *DB) {
+		db.strict = true
 	}
 }
 
@@ -98,12 +107,16 @@ func (db *DB) Rebind(query string) string {
 }
 
 // AddHook registers a Hook instance that applies to all queries on this DB.
+// A nil Hook is ignored.
 //
 // AddHook is a setup-time API and is not safe for concurrent use: call it before
 // the DB is shared across goroutines. Tx, Conn and Stmt values copy the Hook chain
 // when created, so Hooks added later do not apply to them. Prefer WithHooks at
 // Open/Connect, and WithCallHooks for per-request Hooks (safe for concurrent use).
 func (db *DB) AddHook(hook Hook) {
+	if hook == nil {
+		return
+	}
 	db.hooks = append(db.hooks, hook)
 }
 

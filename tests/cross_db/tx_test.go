@@ -182,6 +182,47 @@ func TestCrossDBTxNamedOps(t *testing.T) {
 }
 
 // ========================================================
+// TestCrossDBCloseWithErr_RollbackHookError — 校验回滚 Hook 上报的是回滚结果而非业务错误 (#17)
+// ========================================================
+func TestCrossDBCloseWithErr_RollbackHookError(t *testing.T) {
+	runWithSchema(crossSchema, t, func(db *sqlex.DB, t *testing.T, now string) {
+		crossDBOnly(t)
+
+		// 独立 DB 包装，避免污染全局 hooks
+		dbCopy := sqlex.NewDB(db.DB, db.DriverName())
+		hook := &crossTestHook{}
+		dbCopy.AddHook(hook)
+
+		tx, err := dbCopy.Beginx()
+		if err != nil {
+			t.Fatalf("[%s] Beginx failed: %v", dbLabel(db), err)
+		}
+		bizErr := errors.New("business failure")
+		if err = tx.CloseWithErr(bizErr); !errors.Is(err, bizErr) {
+			t.Fatalf("[%s] CloseWithErr should return the business error, got %v", dbLabel(db), err)
+		}
+
+		hook.mu.Lock()
+		defer hook.mu.Unlock()
+
+		// queries[i] and errors[i] are recorded by BeforeQuery/AfterQuery in pairs.
+		found := false
+		for i, q := range hook.queries {
+			if q != "TX rollback" {
+				continue
+			}
+			found = true
+			if i < len(hook.errors) && hook.errors[i] != nil {
+				t.Errorf("[%s] rollback Hook reported err=%v, want nil on successful rollback", dbLabel(db), hook.errors[i])
+			}
+		}
+		if !found {
+			t.Fatalf("[%s] no OpRollback Hook event recorded", dbLabel(db))
+		}
+	})
+}
+
+// ========================================================
 // TestCrossDBTxErrorHandling — 验证事务错误处理
 // ========================================================
 func TestCrossDBTxErrorHandling(t *testing.T) {

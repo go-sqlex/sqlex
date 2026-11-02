@@ -75,6 +75,38 @@ func TestHookZeroHooks(t *testing.T) {
 	afterFunc() // should not panic
 }
 
+// TestWithHooks_FiltersNil verifies registration APIs drop the untyped nil Hook,
+// which would panic on invocation, while a typed nil pointer is kept: it may be
+// a deliberate, nil-safe implementation (#18).
+func TestWithHooks_FiltersNil(t *testing.T) {
+	db := NewDB(nil, "mysql", WithHooks(nil, &onionTestHook{}, nil))
+	if len(db.hooks) != 1 {
+		t.Errorf("WithHooks kept %d hooks, want 1", len(db.hooks))
+	}
+
+	db.AddHook(nil)
+	if len(db.hooks) != 1 {
+		t.Errorf("AddHook(nil) changed hook count to %d, want 1", len(db.hooks))
+	}
+
+	ctx := WithCallHooks(context.Background(), nil, &onionTestHook{}, nil)
+	if hooks := getCallHooks(ctx); len(hooks) != 1 {
+		t.Errorf("WithCallHooks kept %d hooks, want 1", len(hooks))
+	}
+
+	// Passing only nil Hooks is a no-op: the parent's call-scoped Hooks stay.
+	if child := WithCallHooks(ctx, nil); child != ctx {
+		t.Error("WithCallHooks(ctx, nil) should return ctx unchanged")
+	}
+
+	// A typed nil is not nil as an interface and is left to the caller.
+	var typedNil *onionTestHook
+	db.AddHook(typedNil)
+	if len(db.hooks) != 2 {
+		t.Errorf("AddHook(typed nil) should keep the Hook, got %d hooks", len(db.hooks))
+	}
+}
+
 // TestHookSingleHook verifies normal execution of a single Hook.
 func TestHookSingleHook(t *testing.T) {
 	var beforeCalls []string

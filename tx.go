@@ -115,39 +115,59 @@ func (tx *Tx) Preparex(query string) (*Stmt, error) {
 	return Preparex(tx, query)
 }
 
+// nativeStmt unwraps the statement types accepted by Stmtx, also returning the
+// SQL recorded at prepare time so Hook events still report it after the move
+// into a Tx (#15). Nil statements yield an error instead of a nil dereference,
+// which is what TryStmtx promises (#13); op only names the caller in messages.
+func nativeStmt(stmt any, op string) (*sql.Stmt, string, error) {
+	switch v := stmt.(type) {
+	case Stmt:
+		if v.Stmt == nil {
+			return nil, "", fmt.Errorf("sqlex.%s: nil statement", op)
+		}
+		return v.Stmt, v.query, nil
+	case *Stmt:
+		if v == nil || v.Stmt == nil {
+			return nil, "", fmt.Errorf("sqlex.%s: nil statement", op)
+		}
+		return v.Stmt, v.query, nil
+	case *sql.Stmt:
+		if v == nil {
+			return nil, "", fmt.Errorf("sqlex.%s: nil statement", op)
+		}
+		return v, "", nil
+	case nil:
+		return nil, "", fmt.Errorf("sqlex.%s: nil statement", op)
+	default:
+		return nil, "", fmt.Errorf("non-statement type %v passed to %s", reflect.ValueOf(stmt).Type(), op)
+	}
+}
+
+// wrapStmt binds a statement moved into the transaction to its mapper, Hooks
+// and original SQL.
+func (tx *Tx) wrapStmt(s *sql.Stmt, query string) *Stmt {
+	return &Stmt{Stmt: s, Mapper: tx.Mapper, hooks: tx.hooks, query: query, strict: tx.strict}
+}
+
 // Stmtx returns a version of the prepared statement which runs within a transaction.  Provided
 // stmt can be either *sql.Stmt or *sqlex.Stmt.
 //
 // WARNING: Stmtx will panic if stmt is not a valid type. Use TryStmtx for a safe version.
 func (tx *Tx) Stmtx(stmt any) *Stmt {
-	var s *sql.Stmt
-	switch v := stmt.(type) {
-	case Stmt:
-		s = v.Stmt
-	case *Stmt:
-		s = v.Stmt
-	case *sql.Stmt:
-		s = v
-	default:
-		panic(fmt.Sprintf("non-statement type %v passed to Stmtx", reflect.ValueOf(stmt).Type()))
+	s, q, err := nativeStmt(stmt, "Stmtx")
+	if err != nil {
+		panic(err.Error())
 	}
-	return &Stmt{Stmt: tx.Stmt(s), Mapper: tx.Mapper, hooks: tx.hooks, strict: tx.strict}
+	return tx.wrapStmt(tx.Stmt(s), q)
 }
 
 // TryStmtx is a safe version of Stmtx that returns an error instead of panicking.
 func (tx *Tx) TryStmtx(stmt any) (*Stmt, error) {
-	var s *sql.Stmt
-	switch v := stmt.(type) {
-	case Stmt:
-		s = v.Stmt
-	case *Stmt:
-		s = v.Stmt
-	case *sql.Stmt:
-		s = v
-	default:
-		return nil, fmt.Errorf("non-statement type %v passed to TryStmtx", reflect.ValueOf(stmt).Type())
+	s, q, err := nativeStmt(stmt, "TryStmtx")
+	if err != nil {
+		return nil, err
 	}
-	return &Stmt{Stmt: tx.Stmt(s), Mapper: tx.Mapper, hooks: tx.hooks, strict: tx.strict}, nil
+	return tx.wrapStmt(tx.Stmt(s), q), nil
 }
 
 // StmtxContext returns a version of the prepared statement which runs within a
@@ -155,34 +175,20 @@ func (tx *Tx) TryStmtx(stmt any) (*Stmt, error) {
 //
 // WARNING: StmtxContext will panic if stmt is not a valid type. Use TryStmtxContext for a safe version.
 func (tx *Tx) StmtxContext(ctx context.Context, stmt any) *Stmt {
-	var s *sql.Stmt
-	switch v := stmt.(type) {
-	case Stmt:
-		s = v.Stmt
-	case *Stmt:
-		s = v.Stmt
-	case *sql.Stmt:
-		s = v
-	default:
-		panic(fmt.Sprintf("non-statement type %v passed to StmtxContext", reflect.ValueOf(stmt).Type()))
+	s, q, err := nativeStmt(stmt, "StmtxContext")
+	if err != nil {
+		panic(err.Error())
 	}
-	return &Stmt{Stmt: tx.StmtContext(ctx, s), Mapper: tx.Mapper, hooks: tx.hooks, strict: tx.strict}
+	return tx.wrapStmt(tx.StmtContext(ctx, s), q)
 }
 
 // TryStmtxContext is a safe version of StmtxContext that returns an error instead of panicking.
 func (tx *Tx) TryStmtxContext(ctx context.Context, stmt any) (*Stmt, error) {
-	var s *sql.Stmt
-	switch v := stmt.(type) {
-	case Stmt:
-		s = v.Stmt
-	case *Stmt:
-		s = v.Stmt
-	case *sql.Stmt:
-		s = v
-	default:
-		return nil, fmt.Errorf("non-statement type %v passed to TryStmtxContext", reflect.ValueOf(stmt).Type())
+	s, q, err := nativeStmt(stmt, "TryStmtxContext")
+	if err != nil {
+		return nil, err
 	}
-	return &Stmt{Stmt: tx.StmtContext(ctx, s), Mapper: tx.Mapper, hooks: tx.hooks, strict: tx.strict}, nil
+	return tx.wrapStmt(tx.StmtContext(ctx, s), q), nil
 }
 
 // NamedStmt returns a version of the prepared statement which runs within a transaction.
@@ -331,7 +337,9 @@ func (tx *Tx) CloseWithErrContext(ctx context.Context, err error) error {
 			tx.fireTxHook(ctx, OpRollback, rbErr)
 			return errors.Join(err, rbErr)
 		}
-		tx.fireTxHook(ctx, OpRollback, err)
+		// The rollback itself succeeded: report nil to the Hook (a nil err means
+		// success) and return the caller's business error separately (#17).
+		tx.fireTxHook(ctx, OpRollback, nil)
 		return err
 	}
 	err = tx.Commit()

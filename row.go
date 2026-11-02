@@ -24,6 +24,9 @@ func (r *Row) Scan(dest ...any) error {
 	if r.err != nil {
 		return r.err
 	}
+	if r.rows == nil {
+		return sql.ErrNoRows
+	}
 
 	// TODO(bradfitz): for now we need to defensively clone all
 	// []byte that the driver returned (not permitting

@@ -6,6 +6,7 @@ import (
 	"database/sql/driver"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"slices"
 )
@@ -17,6 +18,12 @@ type GzippedText []byte
 // Value implements the driver.Valuer interface, gzipping the raw value of
 // this GzippedText.
 func (g GzippedText) Value() (driver.Value, error) {
+	// A nil value means "no value": persist SQL NULL instead of a 20-byte empty
+	// gzip stream, which would destroy nullable semantics and scan back as
+	// []byte{} rather than nil (#20).
+	if g == nil {
+		return nil, nil
+	}
 	b := make([]byte, 0, len(g))
 	buf := bytes.NewBuffer(b)
 	w := gzip.NewWriter(buf)
@@ -113,7 +120,10 @@ func (j *JSONText) Scan(src any) error {
 			source = t
 		}
 	case nil:
-		*j = nullJSON()
+		// Route SQL NULL through source like the other branches so the append
+		// below stores the "null" literal. Assigning *j here directly would be
+		// wiped out by the append, leaving empty bytes that fail to parse (#16).
+		source = nullJSON()
 	default:
 		//lint:ignore ST1005 changing this could break consumers of this package
 		return errors.New("Incompatible type for JSONText")
@@ -194,16 +204,24 @@ func (b BitBool) Value() (driver.Value, error) {
 	return []byte{0}, nil
 }
 
-// Scan implements the sql.Scanner interface,
-// and turns the bitfield incoming from MySQL into a BitBool.
-// PostgreSQL returns BIT(1) as the text "1"/"0", which is also accepted.
-// Only BIT(1) is supported: just the first byte is inspected, and any value
-// other than 1 / '1' scans as false.
+// Scan implements the sql.Scanner interface. The raw single-byte form MySQL
+// returns for BIT(1) (0x00 / 0x01) is decoded here; every other value goes
+// through driver.Bool, the same conversion database/sql applies when scanning
+// into a *bool. That covers bool, int64 0/1, and the strconv.ParseBool forms
+// ("1", "t", "true", ...) used by PostgreSQL and SQLite, and rejects anything
+// else instead of guessing.
+//
+// SQL NULL is an error, as for *bool: map a nullable column to a *BitBool
+// struct field, which database/sql sets to nil for NULL.
 func (b *BitBool) Scan(src any) error {
-	v, ok := src.([]byte)
-	if !ok || len(v) == 0 {
-		return errors.New("bad []byte type assertion")
+	if v, ok := src.([]byte); ok && len(v) == 1 && v[0] <= 1 {
+		*b = v[0] == 1
+		return nil
 	}
-	*b = v[0] == 1 || v[0] == '1'
+	v, err := driver.Bool.ConvertValue(src)
+	if err != nil {
+		return fmt.Errorf("cannot scan %T into BitBool: %w", src, err)
+	}
+	*b = BitBool(v.(bool))
 	return nil
 }

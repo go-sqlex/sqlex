@@ -10,6 +10,28 @@ type testAddr struct {
 	Street string `json:"street"`
 }
 
+// TestNewJSONValueOrNull verifies the ternary constructor: ok selects between
+// the given value and SQL NULL.
+func TestNewJSONValueOrNull(t *testing.T) {
+	cfg := testAddr{City: "Shanghai"}
+
+	jv := NewJSONValueOrNull(cfg, true)
+	if !jv.Valid || jv.Val != cfg {
+		t.Errorf("NewJSONValueOrNull(cfg, true) = %+v, want valid with %+v", jv, cfg)
+	}
+
+	jv = NewJSONValueOrNull(cfg, false)
+	if jv.Valid {
+		t.Error("NewJSONValueOrNull(cfg, false) should be invalid")
+	}
+	if jv != (JSONValue[testAddr]{}) {
+		t.Errorf("NewJSONValueOrNull(cfg, false) = %+v, want the zero value", jv)
+	}
+	if v, err := jv.Value(); err != nil || v != nil {
+		t.Errorf("Value() = (%v, %v), want (nil, nil)", v, err)
+	}
+}
+
 func TestJSONValue_ScanNull(t *testing.T) {
 	var jv JSONValue[testAddr]
 	if err := jv.Scan(nil); err != nil {

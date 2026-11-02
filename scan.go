@@ -288,10 +288,7 @@ func walkRawBytes(t reflect.Type, seen map[reflect.Type]struct{}) bool {
 	case reflect.Struct:
 		for i := 0; i < t.NumField(); i++ {
 			f := t.Field(i)
-			if !f.IsExported() && !f.Anonymous {
-				continue
-			}
-			if walkRawBytes(f.Type, seen) {
+			if isScanTarget(f) && walkRawBytes(f.Type, seen) {
 				return true
 			}
 		}
@@ -300,6 +297,21 @@ func walkRawBytes(t reflect.Type, seen map[reflect.Type]struct{}) bool {
 	default:
 	}
 	return false
+}
+
+// isScanTarget reports whether struct field f can receive driver data: it must
+// be reachable (exported, or an embedded struct whose fields may be) and not
+// excluded from mapping with a `db:"-"` tag.
+func isScanTarget(f reflect.StructField) bool {
+	if !f.IsExported() && !f.Anonymous {
+		return false
+	}
+	tag, ok := f.Tag.Lookup("db")
+	if !ok {
+		return true
+	}
+	name, _, _ := strings.Cut(tag, ",")
+	return name != "-"
 }
 
 // fieldsByName fills a values interface with fields from the passed value based

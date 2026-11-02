@@ -125,6 +125,27 @@ func (r *rawScanner) Scan(src any) error {
 }
 
 // TestContainsRawBytes is a database-free unit test covering all branches of
+// TestContainsRawBytes_IgnoredTag verifies a RawBytes field explicitly excluded
+// from scanning with `db:"-"` does not reject the destination type (#22).
+func TestContainsRawBytes_IgnoredTag(t *testing.T) {
+	type withIgnoredRaw struct {
+		Data sql.RawBytes `db:"-"`
+	}
+	type withIgnoredNested struct {
+		Inner struct {
+			Data sql.RawBytes `db:"-"`
+		}
+	}
+	for name, typ := range map[string]reflect.Type{
+		"ignored_raw_bytes": reflect.TypeOf(withIgnoredRaw{}),
+		"ignored_in_nested": reflect.TypeOf(withIgnoredNested{}),
+	} {
+		if containsRawBytes(typ) {
+			t.Errorf("[%s] db:\"-\" RawBytes field should be ignored", name)
+		}
+	}
+}
+
 // containsRawBytes, in particular the skip of unexported non-embedded fields
 // (the continue path) which the PG-dependent integration test above cannot
 // reliably exercise in CI.

@@ -424,6 +424,24 @@ func TestBindArray_EdgeCases(t *testing.T) {
 	})
 }
 
+// TestBindNamed_NonStructArg verifies that scalar arguments return an error
+// instead of panicking inside reflectx.TraversalsByNameFunc (#14).
+func TestBindNamed_NonStructArg(t *testing.T) {
+	const query = `SELECT * FROM t WHERE id = :id`
+	for _, arg := range []any{42, "str", 3.14, true} {
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					t.Errorf("BindNamed(%T) panicked: %v", arg, r)
+				}
+			}()
+			if _, _, err := BindNamed(QUESTION, query, arg); err == nil {
+				t.Errorf("BindNamed(%T) returned nil error, want unsupported argument type error", arg)
+			}
+		}()
+	}
+}
+
 // TestBindNamed_NilArg verifies that nil arguments return an error instead of panicking (#7 F-001).
 func TestBindNamed_NilArg(t *testing.T) {
 	type user struct {

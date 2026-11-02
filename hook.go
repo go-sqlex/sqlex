@@ -98,14 +98,31 @@ type callHooksKey struct{}
 //
 //	ctx = sqlex.WithCallHooks(ctx, traceHook, schemaHook)
 //
-// Passing no Hooks returns ctx unchanged. A Tx from BeginTxx does not capture these
+// Passing no Hooks returns ctx unchanged. Nil Hooks are ignored, so passing only
+// nil Hooks also returns ctx unchanged and leaves any call-scoped Hooks already
+// carried by ctx in effect. A Tx from BeginTxx does not capture these
 // Hooks — pass the same ctx to its methods. Hooks must be safe for concurrent use.
 func WithCallHooks(ctx context.Context, hooks ...Hook) context.Context {
+	// filterHooks returns a fresh slice, so the caller cannot mutate the stored
+	// chain afterwards.
+	hooks = filterHooks(hooks)
 	if len(hooks) == 0 {
 		return ctx
 	}
-	// Copy so the caller cannot mutate the stored chain afterwards.
-	return context.WithValue(ctx, callHooksKey{}, append([]Hook(nil), hooks...))
+	return context.WithValue(ctx, callHooksKey{}, hooks)
+}
+
+// filterHooks returns a new slice without nil Hooks. Only the untyped nil
+// interface is dropped: a typed nil pointer may be a deliberate, nil-safe
+// implementation, so it is the caller's call — registration means invocation.
+func filterHooks(hooks []Hook) []Hook {
+	out := make([]Hook, 0, len(hooks))
+	for _, h := range hooks {
+		if h != nil {
+			out = append(out, h)
+		}
+	}
+	return out
 }
 
 // getCallHooks returns the call-scoped Hooks carried by ctx, or nil if absent.
@@ -156,7 +173,9 @@ func executeHooks(ctx context.Context, hooks []Hook, event *QueryEvent) (context
 
 	event.StartTime = time.Now()
 
-	// Execute BeforeQuery in order
+	// Execute BeforeQuery in order. Every Hook here is non-nil: registration
+	// (WithHooks / AddHook / WithCallHooks) filters nil values, and nothing else
+	// can reach this slice, so the hot path does not re-check.
 	for _, h := range hooks {
 		ctx = h.BeforeQuery(ctx, event)
 	}

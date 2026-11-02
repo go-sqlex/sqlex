@@ -1,3 +1,32 @@
+## v1.6.0
+
+> Focus: fixes from the audit in [#12](https://github.com/go-sqlex/sqlex/issues/12)–[#22](https://github.com/go-sqlex/sqlex/issues/22). Minor release: it adds exported API and changes behaviour inherited from jmoiron/sqlx.
+
+### ✨ Features
+
+- **`WithStrictMode()`**: the Opt advertised by the package documentation now exists, so the Quick Start example in `doc.go` compiles ([#19](https://github.com/go-sqlex/sqlex/issues/19)).
+- **`types.NewJSONValueOrNull[T](val, ok)`**: writes `val` when `ok` is true and SQL NULL when it is false, so conditional NULLs do not need a struct literal, where leaving `Valid` unset silently writes NULL.
+
+### ⚠️ Behaviour Changes
+
+- **`types.JSONText.Scan(nil)` now yields `"null"`** ([#16](https://github.com/go-sqlex/sqlex/issues/16)): it used to leave empty bytes — the same as jmoiron/sqlx — so `string(j)` was empty and `json.Unmarshal(j, …)` failed with unexpected EOF. Code that detected SQL NULL with `len(j) == 0` must check for `"null"` or switch to `types.NullJSONText`. Writing is unchanged: an empty `JSONText` was already stored as `null`.
+- **`types.GzippedText(nil)` now writes SQL NULL** ([#20](https://github.com/go-sqlex/sqlex/issues/20)): previously it produced a 20-byte empty gzip stream, which made nullable columns non-NULL and scanned back as `[]byte{}` rather than `nil`. A `NOT NULL` column now rejects a nil value.
+- **`types.BitBool.Scan` follows `driver.Bool`** ([#21](https://github.com/go-sqlex/sqlex/issues/21)): apart from MySQL's raw `BIT(1)` byte, values are converted exactly as `database/sql` converts them for `*bool` — `bool`, `int64` 0/1 and the `strconv.ParseBool` forms (`"1"`, `"t"`, `"true"`, …) are accepted, so SQLite and PostgreSQL `BOOLEAN` columns now scan. Anything else is an error rather than a silent `false`, including SQL NULL (map nullable columns to a `*types.BitBool` field) and multi-byte `[]byte` values that previously scanned by their first byte.
+
+### 🐛 Bug Fixes
+
+- **`Row.Scan` panicked on a zero `Row`**: it now returns `sql.ErrNoRows`, matching `Columns`/`ColumnTypes`/`StructScan` ([#12](https://github.com/go-sqlex/sqlex/issues/12)).
+- **`TryStmtx`/`TryStmtxContext` panicked on nil statements**: typed nil `*Stmt`/`*sql.Stmt` and an untyped nil now return an error, honouring the documented "returns an error instead of panicking" contract ([#13](https://github.com/go-sqlex/sqlex/issues/13)).
+- **`bindNamedMapper` panicked on scalar arguments**: `NamedExec`/`NamedQuery`/`Named` with an `int`, `string`, `float` or `bool` now returns an error instead of a reflect panic ([#14](https://github.com/go-sqlex/sqlex/issues/14)).
+- **`Tx.Stmtx*` lost the SQL for Hook events**: statements moved into a transaction keep their `query`, so tracing and logging no longer report an empty `Query`; this also covers `Tx.NamedStmt` ([#15](https://github.com/go-sqlex/sqlex/issues/15)).
+- **Rollback Hook reported the business error**: a successful rollback now reports `nil`, so APM no longer records a false rollback failure; the business error is still returned ([#17](https://github.com/go-sqlex/sqlex/issues/17)).
+- **nil Hooks panicked on the first query**: `WithHooks`, `AddHook` and `WithCallHooks` ignore a nil Hook. A typed nil pointer is kept, since its methods may be nil-safe ([#18](https://github.com/go-sqlex/sqlex/issues/18)).
+- **`sql.RawBytes` guard ignored `db:"-"`**: a `sql.RawBytes` field explicitly excluded from mapping no longer rejects the destination type ([#22](https://github.com/go-sqlex/sqlex/issues/22)).
+
+### 🧹 Not Changed
+
+- **`\\?` escaping** ([#22](https://github.com/go-sqlex/sqlex/issues/22)): `Rebind` and `In` keep treating any `?` preceded by a backslash as escaped. Counting backslash parity would make the two disagree on placeholders, and outside string literals a backslash is not valid SQL on the supported databases. A test now guards that they stay in agreement.
+
 ## v1.5.5
 
 > Focus: fixes from the code review in [#7](https://github.com/go-sqlex/sqlex/issues/7) and the audit in [#10](https://github.com/go-sqlex/sqlex/issues/10).

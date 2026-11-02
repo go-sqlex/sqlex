@@ -1,6 +1,42 @@
 package sqlex
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
+
+// TestRebindIn_EscapeConsistency guards that Rebind and In agree on which '?'
+// are placeholders. They scan independently, so a rule changed in only one of
+// them makes In count one number of bind vars and Rebind number another.
+func TestRebindIn_EscapeConsistency(t *testing.T) {
+	// Each prefix is followed by an IN list so In runs its full scan instead of
+	// the no-slice fast path.
+	for _, prefix := range []string{
+		`x = ?`,
+		`x = \?`,
+		`x = \\?`,
+		`x = \\\?`,
+		`x = ??`,
+		`x = ? AND y = \?`,
+	} {
+		query := `SELECT a FROM t WHERE ` + prefix + ` AND id IN (?)`
+		n := strings.Count(Rebind(DOLLAR, query), "$")
+
+		args := make([]any, 0, n)
+		for i := 0; i < n-1; i++ {
+			args = append(args, i)
+		}
+		args = append(args, []int{1, 2})
+		if _, _, err := In(query, args...); err != nil {
+			t.Errorf("[%s] Rebind sees %d placeholders but In rejects %d args: %v", prefix, n, n, err)
+		}
+
+		extra := append([]any{-1}, args...)
+		if _, _, err := In(query, extra...); err == nil {
+			t.Errorf("[%s] Rebind sees %d placeholders but In accepts %d args", prefix, n, n+1)
+		}
+	}
+}
 
 // TestRebind_EdgeCases covers Rebind behavior across various SQL lexical elements.
 // Goal: maintain symmetry with compileNamedQuery's lexical skip rules — all ? within

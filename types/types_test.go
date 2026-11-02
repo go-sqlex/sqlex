@@ -283,6 +283,63 @@ func TestBitBool_Scan_PostgresText(t *testing.T) {
 	}
 }
 
+// TestBitBool_Scan_SourceTypes verifies BitBool accepts the value shapes
+// returned by different drivers, following driver.Bool — the conversion
+// database/sql uses for *bool — and rejecting what it rejects (#21).
+func TestBitBool_Scan_SourceTypes(t *testing.T) {
+	cases := []struct {
+		name    string
+		src     any
+		want    BitBool
+		wantErr bool
+	}{
+		// MySQL BIT(1): a single raw byte.
+		{"raw_bit_one", []byte{1}, true, false},
+		{"raw_bit_zero", []byte{0}, false, false},
+		// PostgreSQL BIT(1) / textual forms.
+		{"bytes_one", []byte("1"), true, false},
+		{"bytes_zero", []byte("0"), false, false},
+		{"bytes_true", []byte("true"), true, false},
+		// PostgreSQL BOOLEAN.
+		{"bool_true", true, true, false},
+		{"bool_false", false, false, false},
+		// SQLite INTEGER.
+		{"int64_one", int64(1), true, false},
+		{"int64_zero", int64(0), false, false},
+		// strconv.ParseBool forms.
+		{"string_one", "1", true, false},
+		{"string_zero", "0", false, false},
+		{"string_t", "t", true, false},
+		{"string_TRUE", "TRUE", true, false},
+		{"string_false", "false", false, false},
+		// Rejected like *bool: no silent guess.
+		{"nil_is_error_use_pointer", nil, false, true},
+		{"int64_out_of_range", int64(2), false, true},
+		{"string_garbage", "abc", false, true},
+		{"raw_byte_out_of_range", []byte{2}, false, true},
+		{"empty_bytes", []byte{}, false, true},
+		{"unsupported_float", 3.14, false, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			var b BitBool
+			err := b.Scan(c.src)
+			if c.wantErr {
+				if err == nil {
+					t.Fatalf("Scan(%#v) = nil error, want error", c.src)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Scan(%#v) failed: %v", c.src, err)
+			}
+			if b != c.want {
+				t.Errorf("Scan(%#v) = %v, want %v", c.src, b, c.want)
+			}
+		})
+	}
+}
+
 // TestJSONText_NoSentinelAliasing verifies that values derived from the "null"
 // literal never share a backing array: overwriting one JSONText must not
 // corrupt the "null" later values marshal to (#10 F-0100).
@@ -319,5 +376,57 @@ func TestGzippedText_Scan_Null(t *testing.T) {
 	}
 	if g != nil {
 		t.Errorf("Scan(nil) should reset to nil, got %q", g)
+	}
+}
+
+// TestJSONText_Scan_Null verifies that scanning SQL NULL leaves the valid JSON
+// literal "null" in the value, not empty bytes (#16). Empty bytes make
+// string(j) and json.Unmarshal(j) fail with unexpected EOF.
+func TestJSONText_Scan_Null(t *testing.T) {
+	var j JSONText
+	if err := j.Scan(nil); err != nil {
+		t.Fatalf("Scan(nil): %v", err)
+	}
+	if string(j) != "null" {
+		t.Errorf("Scan(nil) = %q, want %q", string(j), "null")
+	}
+	// Parse it the way callers do, without going through JSONText.Unmarshal
+	// (which normalises empty values and would hide the defect).
+	var m any
+	if err := json.Unmarshal(j, &m); err != nil {
+		t.Errorf("json.Unmarshal after Scan(nil): %v", err)
+	}
+}
+
+// TestJSONText_Scan_Null_Reused verifies a reused JSONText does not keep stale
+// content when it is re-scanned from SQL NULL.
+func TestJSONText_Scan_Null_Reused(t *testing.T) {
+	j := JSONText(`{"stale":true}`)
+	if err := j.Scan(nil); err != nil {
+		t.Fatalf("Scan(nil): %v", err)
+	}
+	if string(j) != "null" {
+		t.Errorf("Scan(nil) on reused value = %q, want %q", string(j), "null")
+	}
+}
+
+// TestGzippedText_Value_Null verifies that a nil GzippedText is written as SQL
+// NULL instead of a 20-byte empty gzip stream (#20).
+func TestGzippedText_Value_Null(t *testing.T) {
+	v, err := GzippedText(nil).Value()
+	if err != nil {
+		t.Fatalf("Value(): %v", err)
+	}
+	if v != nil {
+		t.Errorf("Value() = %v, want nil (SQL NULL)", v)
+	}
+
+	// A non-nil (even empty) value must still be compressed.
+	v, err = GzippedText{}.Value()
+	if err != nil {
+		t.Fatalf("Value() on empty non-nil: %v", err)
+	}
+	if v == nil {
+		t.Error("Value() on empty non-nil = nil, want compressed bytes")
 	}
 }

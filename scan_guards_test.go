@@ -97,6 +97,16 @@ func TestRowColumns_NilRows(t *testing.T) {
 	}
 }
 
+// TestRowScan_NilRows verifies Scan returns sql.ErrNoRows instead of panicking
+// when the Row holds no rows and no deferred error (#12).
+func TestRowScan_NilRows(t *testing.T) {
+	var r Row
+	var v int
+	if err := r.Scan(&v); !errors.Is(err, sql.ErrNoRows) {
+		t.Errorf("Scan: expected sql.ErrNoRows, got %v", err)
+	}
+}
+
 // TestRowsStructScan_SwitchDestType verifies the traversal cache is rebuilt when
 // the destination struct type changes, instead of writing through field indexes
 // computed for the previous type (#10 F-0018).
