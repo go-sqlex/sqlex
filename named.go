@@ -630,7 +630,8 @@ func Named(query string, arg any) (string, []any, error) {
 }
 
 func bindNamedMapper(bindType int, query string, arg any, m *reflectx.Mapper) (string, []any, error) {
-	if _, err := derefArg(arg); err != nil {
+	v, err := derefArg(arg)
+	if err != nil {
 		return "", nil, err
 	}
 	t := reflect.TypeOf(arg)
@@ -645,6 +646,11 @@ func bindNamedMapper(bindType int, query string, arg any, m *reflectx.Mapper) (s
 	case k == reflect.Array || k == reflect.Slice:
 		return bindArray(bindType, query, arg, m)
 	default:
+		// bindStruct ends up in reflectx.mustBe(t, reflect.Struct), which panics on
+		// scalars such as int, string or bool. Reject them here with an error (#14).
+		if v.Kind() != reflect.Struct {
+			return "", nil, fmt.Errorf("sqlex.bindNamedMapper: unsupported argument type %T: expected struct or map", arg)
+		}
 		return bindStruct(bindType, query, arg, m)
 	}
 }

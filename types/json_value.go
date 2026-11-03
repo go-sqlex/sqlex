@@ -8,13 +8,32 @@ import (
 // JSONValue is a generic JSON column type that maps database JSON fields directly to Go strongly-typed structs.
 // T can be any JSON-serializable type (struct, slice, map, pointer, etc.). Types encoding/json cannot
 // handle (chan, func, complex) compile fine but fail at runtime in Value/MarshalJSON.
+//
+// Valid decides between a JSON document and SQL NULL. Prefer the constructors
+// over a struct literal: JSONValue[T]{Val: v} compiles but, with Valid left
+// false, silently writes SQL NULL. The zero value is SQL NULL.
 type JSONValue[T any] struct {
 	Val   T
 	Valid bool
 }
 
-// NewJSONValue creates a valid JSONValue.
+// NewJSONValue creates a valid JSONValue, which always writes val.
+// Use NewJSONValueOrNull when NULL depends on a condition; the zero value
+// JSONValue[T]{} writes SQL NULL.
 func NewJSONValue[T any](val T) JSONValue[T] {
+	return JSONValue[T]{Val: val, Valid: true}
+}
+
+// NewJSONValueOrNull creates a valid JSONValue when ok is true, and a value
+// that writes SQL NULL when ok is false — the one-line ternary form:
+//
+//	row.Config = types.NewJSONValueOrNull(cfg, req.EnableConfig)
+//
+// Note that val is ignored when ok is false, matching the meaning of "or null".
+func NewJSONValueOrNull[T any](val T, ok bool) JSONValue[T] {
+	if !ok {
+		return JSONValue[T]{}
+	}
 	return JSONValue[T]{Val: val, Valid: true}
 }
 

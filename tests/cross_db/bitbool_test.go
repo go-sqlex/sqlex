@@ -27,5 +27,27 @@ func TestCrossDBBitBoolScan(t *testing.T) {
 		if len(got) != 2 || !got[0] || got[1] {
 			t.Errorf("[%s] expected [true false], got %v", dbLabel(db), got)
 		}
+
+		// A nullable column maps to a *BitBool struct field, which database/sql
+		// sets to nil for NULL — the documented replacement for treating NULL as
+		// false.
+		db.MustExec("INSERT INTO cross_bitbool (id, b) VALUES (3, NULL)")
+		type bitRow struct {
+			ID int            `db:"id"`
+			B  *types.BitBool `db:"b"`
+		}
+		var rows []bitRow
+		if err := db.Select(&rows, "SELECT id, b FROM cross_bitbool ORDER BY id"); err != nil {
+			t.Fatalf("[%s] Select rows with *BitBool failed: %v", dbLabel(db), err)
+		}
+		if len(rows) != 3 || rows[0].B == nil || !*rows[0].B || rows[1].B == nil || *rows[1].B || rows[2].B != nil {
+			t.Errorf("[%s] expected B = [true false nil], got %+v", dbLabel(db), rows)
+		}
+
+		// Scanning NULL into a plain BitBool is an error, as it is for bool.
+		var plain types.BitBool
+		if err := db.Get(&plain, "SELECT b FROM cross_bitbool WHERE id = 3"); err == nil {
+			t.Errorf("[%s] scanning NULL into BitBool should fail, got %v", dbLabel(db), plain)
+		}
 	})
 }
